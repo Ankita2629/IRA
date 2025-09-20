@@ -1,0 +1,299 @@
+@import url('https://fonts.googleapis.com/css2?family=Bitcount+Single:wght@100..900&family=Fira+Code:wght@300..700&family=Orbitron:wght@400..900&family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&display=swap');
+body {
+    background: radial-gradient(
+        ellipse 80% 60% at 50% 0%,   /* ellipse shape at the top center */
+        rgba(6, 182, 212, 0.25),     /* teal glow color */
+        transparent 70%              /* fades to black */
+    ),
+    #000000; /* base black */
+    
+    overflow-y: hidden;
+    overflow-x: hidden;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+}
+
+
+
+/* ==== Morphing rotating blobs ==== */
+.square {
+  position: relative;
+  width: 400px;
+  height: 400px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  /* Shift circles upward */
+  margin-top: -500px; 
+}
+
+.square span:nth-child(1),
+.square span:nth-child(2),
+.square span:nth-child(3) {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+background-image: radial-gradient(#ffffff00 50%, #ffffff3b 40%);
+    box-shadow: 0 0 50px rgb(255,255,255), inset 0 0 50px rgb(255,255,255);
+
+  border-radius: 38% 62% 63% 37% / 41% 44% 56% 59%;
+  transition: 0.5s;
+}
+
+.square span:nth-child(1) { animation: animate1 6s linear infinite; }
+.square span:nth-child(2) { animation: animate2 4s linear infinite; }
+.square span:nth-child(3) { animation: animate3 8s linear infinite; }
+
+/* ==== Rotations ==== */
+@keyframes animate1 {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes animate2 {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes animate3 {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* ==== Logo in middle ==== */
+.logo {
+  position: relative;
+  z-index: 2;
+  width: 180px;      
+  height: 180px;
+  border-radius: 50%; 
+  overflow: hidden;  
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: black;
+  box-shadow: 
+   0 0 50px rgb(255,255,255),
+    0 0 35px rgba(255,255,255);
+}
+#askmeanything{
+    font-family: 'Orbitron', sans-serif;
+}
+
+#askmeanything {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 20px;
+  color: white;
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+}
+
+/* Wipe effect */
+#askmeanything::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: black; /* same as background */
+  animation: revealText 3s linear infinite;
+}
+
+/* Updated animation */
+@keyframes revealText {
+  0% {
+    transform: translateX(0);      /* fully covered */
+  }
+  40% {
+    transform: translateX(100%);   /* wipe → reveal */
+  }
+  60% {
+    transform: translateX(100%);   /* stay revealed for a moment */
+  }
+  100% {
+    transform: translateX(0);      /* wipe back → hide */
+  }
+}
+
+
+
+
+.logo img {
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  animation: speakingPulse 1.8s infinite ease-in-out;
+  filter: 
+    drop-shadow(0 0 15px rgba(255,255,255)) 
+    drop-shadow(0 0 25px rgba(255,255,255 ));
+}
+
+/* Pulse animation (glowing green) */
+@keyframes speakingPulse {
+  0%   { transform: scale(1);   filter: drop-shadow(0 0 15px rgba(255,255,255)); }
+  50%  { transform: scale(1.1); filter: drop-shadow(0 0 35px rgba(255,255,255)); }
+  100% { transform: scale(1);   filter: drop-shadow(0 0 15px rgba(255,255,255)); }
+}
+
+/* ==== Full height section ==== */
+#oval {
+  position: relative;
+  height: 85vh;
+  background: radial-gradient(circle at center, #2b2b2b 0%, #000000 100%);
+  color: white;
+  overflow: hidden;
+  text-align: center;
+}
+
+/* ==== Text below IRA ==== */
+.text {
+  margin-top: -50px;  /* Adjust text closer after moving circles up */
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #ffffff;
+  font-family: 'Orbitron', sans-serif;
+  text-shadow: 0 0 8px rgb(156, 201, 223), 
+               0 0 15px rgb(156, 201, 223);
+}
+
+/* ==== Input Field ==== */
+/* Main container */
+#TextInput {
+  background-color: #181818a8;
+  border: 1px solid teal;
+  box-shadow: 0 0 1px teal, inset 0 0 2px teal;
+  border-radius: 10px;
+  color: teal;
+  padding: 6px 12px;
+  margin: 0px 10%;
+  display: flex;
+  align-items: center;
+}
+
+
+.input-field {
+  background-color: transparent;
+  border: none;
+  width: 95%;
+  outline: none;
+  color: white;
+  font-family: cursive;
+}
+
+/* Buttons */
+.glow-on-hover {
+  width: 40px;
+  height: 40px;
+  border: none;
+  outline: none;
+  color: #fff;
+  background: #111;
+  cursor: pointer;
+  position: relative;
+  z-index: 0;
+  border-radius: 50%; /* make circular */
+  margin-left: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center; /* center icon perfectly */
+}
+
+/* Remove white background from icons */
+.glow-on-hover i {
+  font-size: 18px;
+  color: white;
+  background: transparent !important;
+}
+
+/* Glow effect */
+.glow-on-hover:before {
+  content: '';
+  background: linear-gradient(45deg, #00ffd5, #ffffff, #00ffd5, #ffffff);
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  background-size: 300%;
+  z-index: -1;
+  filter: blur(6px);
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
+  animation: glowing 6s linear infinite;
+  opacity: 0;
+  transition: opacity .3s ease-in-out;
+  border-radius: 50%;
+}
+
+.glow-on-hover:hover:before {
+  opacity: 1;
+}
+
+.glow-on-hover:after {
+  z-index: -1;
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background: #111;
+  left: 0;
+  top: 0;
+  border-radius: 50%;
+}
+
+@keyframes glowing {
+  0% { background-position: 0 0; }
+  50% { background-position: 300% 0; }
+  100% { background-position: 0 0; }
+}
+
+.text-animate {
+  font-size: 24px;
+  font-family: "Fira Code", monospace;
+  color: white;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;    /* center horizontally */
+  align-items: center; 
+}
+
+.text-animate span {
+  opacity: 0;
+  filter: blur(10px);
+  animation: fadeInHoldOut 7s infinite both;
+}
+
+/* staggered appearance */
+.text-animate span:nth-child(1) { animation-delay: 0s; }
+.text-animate span:nth-child(2) { animation-delay: 0.3s; }
+.text-animate span:nth-child(3) { animation-delay: 0.6s; }
+.text-animate span:nth-child(4) { animation-delay: 0.9s; }
+.text-animate span:nth-child(5) { animation-delay: 1.2s; }
+
+@keyframes fadeInHoldOut {
+  0% {
+    opacity: 0;
+    filter: blur(10px);
+    transform: translateY(20px);
+  }
+  15% {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateY(0);
+  }
+  75% { /* keep visible for ~4s */
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    filter: blur(10px);
+    transform: translateY(-20px);
+}
+}
