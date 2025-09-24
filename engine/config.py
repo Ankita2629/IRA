@@ -1,1 +1,2 @@
 ASSISTANT_NAME = "ira"
+LLM_KEY = "AIzaSyDM_VL0mH7R5VQeq6WOrg0l-HOwzalMPfU"
