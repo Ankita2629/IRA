@@ -90,11 +90,10 @@ def allCommands(message=1):
                                         
                     whatsApp(contact_no, query, message, name)
 
-        # else:
-        #     from engine.features import chatBot
-        #     chatBot(query)
         else:
-            print("not run")
+            from engine.features import geminiai
+            geminiai(query)
+        
     except:
         print("error")
     

@@ -18,7 +18,7 @@ $(document).ready(function () {
         $("#SiriWave").attr("hidden", true);
     }
 
-    // eel.expose(senderText)
+    //  eel.expose(senderText)
     // function senderText(message) {
     //     var chatBox = document.getElementById("chat-canvas-body");
     //     if (message.trim() !== "") {

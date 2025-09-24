@@ -12,10 +12,10 @@ import pvporcupine
 import pyaudio
 import pyautogui
 from engine.command import speak
-from engine.config import ASSISTANT_NAME
+from engine.config import ASSISTANT_NAME,LLM_KEY
 import pywhatkit as kit
 
-from engine.helper import extract_yt_term, remove_words
+from engine.helper import extract_yt_term, markdown_to_text, remove_words
 #playing 
 
 con = sqlite3.connect("ira.db")
@@ -170,47 +170,21 @@ def whatsApp(mobile_no, message, flag, name):
     pyautogui.hotkey('enter')
     speak(ira_message)
 
-# # chat bot 
-# def chatBot(query):
-#     user_input = query.lower()
-#     chatbot = hugchat.ChatBot(cookie_path="engine\cookies.json")
-#     id = chatbot.new_conversation()
-#     chatbot.change_conversation(id)
-#     response =  chatbot.chat(user_input)
-#     print(response)
-#     speak(response)
-#     return response
+#API 
+import google.generativeai as genai
+def geminiai(query):
+    try:
+        query = query.replace(ASSISTANT_NAME, "")
+        query = query.replace("search","")
+        #Set your API key
+        genai.configure(api_key=LLM_KEY)
 
-# # android automation
+        #Select a model 
+        model = genai.GenerativeModel("gemini-1.5-flash")
 
-# def makeCall(name, mobileNo):
-#     mobileNo =mobileNo.replace(" ", "")
-#     speak("Calling "+name)
-#     command = 'adb shell am start -a android.intent.action.CALL -d tel:'+mobileNo
-#     os.system(command)
-
-
-# # to send message
-# def sendMessage(message, mobileNo, name):
-#     from engine.helper import replace_spaces_with_percent_s, goback, keyEvent, tapEvents, adbInput
-#     message = replace_spaces_with_percent_s(message)
-#     mobileNo = replace_spaces_with_percent_s(mobileNo)
-#     speak("sending message")
-#     goback(4)
-#     time.sleep(1)
-#     keyEvent(3)
-#     # open sms app
-#     tapEvents(136, 2220)
-#     #start chat
-#     tapEvents(819, 2192)
-#     # search mobile no
-#     adbInput(mobileNo)
-#     #tap on name
-#     tapEvents(601, 574)
-#     # tap on input
-#     tapEvents(390, 2270)
-#     #message
-#     adbInput(message)
-#     #send
-#     tapEvents(957, 1397)
-#     speak("message send successfully to "+name)
+        #Generative a response
+        response = model.generate_content(query)
+        filter_text = markdown_to_text(response.text)
+        speak(filter_text)
+    except Exception as e:
+        print("Error:",e)
