@@ -19,7 +19,6 @@ if __name__ == '__main__':
         p1.start()
         p2.start()
         p1.join()
-
         if p2.is_alive():
             p2.terminate()
             p2.join()
