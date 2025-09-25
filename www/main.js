@@ -40,7 +40,6 @@ $(document).ready(function () {
 
 });
 
-
 //mic button click event
 $("#MicBtn").click(function (e) { 
     eel.playAssistantSound()
