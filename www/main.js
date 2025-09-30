@@ -1,6 +1,6 @@
 $(document).ready(function () {
 
-    // eel.init()()
+    eel.init()()
 
     $('.text').textillate({
         loop: true,
@@ -12,7 +12,7 @@ $(document).ready(function () {
             effect: "bounceOut",
         },
 
-   });
+    });
 
     // Siri configuration
     var siriWave = new SiriWave({
@@ -38,28 +38,31 @@ $(document).ready(function () {
             sync: true,
         },
 
-});
+    });
 
-//mic button click event
-$("#MicBtn").click(function (e) { 
-    eel.playAssistantSound()
-   $("#Oval").attr("hidden", true);
-   $("#SiriWave").attr("hidden", false);
-   eel.allCommands()()
-});
+    // mic button click event
 
-
-function doc_keyUp(e){
-    if (e.key === 'j' && e.metakey){
+    $("#MicBtn").click(function () { 
         eel.playAssistantSound()
-        $("#Oval").attr("hidden",true);
-        $("#SiriWave").attr("hidden",false);
+        $("#Oval").attr("hidden", true);
+        $("#SiriWave").attr("hidden", false);
         eel.allCommands()()
-    }
-}
- document.addEventListener('keyup',doc_keyUp,false);
+    });
 
- // to play assisatnt 
+
+    function doc_keyUp(e) {
+        // this would test for whichever key is 40 (down arrow) and the ctrl key at the same time
+
+        if (e.key === 'j' && e.metaKey) {
+            eel.playAssistantSound()
+            $("#Oval").attr("hidden", true);
+            $("#SiriWave").attr("hidden", false);
+            eel.allCommands()()
+        }
+    }
+    document.addEventListener('keyup', doc_keyUp, false);
+
+    // to play assisatnt 
     function PlayAssistant(message) {
 
         if (message != "") {
@@ -75,7 +78,7 @@ function doc_keyUp(e){
 
     }
 
-     // toogle fucntion to hide and display mic and send button 
+    // toogle fucntion to hide and display mic and send button 
     function ShowHideButton(message) {
         if (message.length == 0) {
             $("#MicBtn").attr('hidden', false);
@@ -112,4 +115,8 @@ function doc_keyUp(e){
             PlayAssistant(message)
         }
     });
+
+
+
+
 });
