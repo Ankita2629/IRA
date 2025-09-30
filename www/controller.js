@@ -3,13 +3,25 @@ $(document).ready(function () {
 
 
     // Display Speak Message
+    // eel.expose(DisplayMessage)
+    // function DisplayMessage(message) {
+
+    //     $(".siri-message li:first").text(message);
+    //     $('.siri-message').textillate('start');
+
+    // }
     eel.expose(DisplayMessage)
-    function DisplayMessage(message) {
+function DisplayMessage(message) {
+    if (!message || message.trim() === "") return;
 
-        $(".siri-message li:first").text(message);
-        $('.siri-message').textillate('start');
+    const container = $(".siri-message");
+    // Clear previous content
+    container.html(`<li>${message}</li>`);
 
-    }
+    // Restart textillate animation
+    container.textillate('start');
+}
+
 
     // Display hood
     eel.expose(ShowHood)
@@ -18,78 +30,109 @@ $(document).ready(function () {
         $("#SiriWave").attr("hidden", true);
     }
 
-    eel.expose(senderText)
-    function senderText(message) {
-        var chatBox = document.getElementById("chat-canvas-body");
-        if (message.trim() !== "") {
-            chatBox.innerHTML += `<div class="row justify-content-end mb-4">
-            <div class = "width-size">
-            <div class="sender_message">${message}</div>
-        </div>`; 
+    // eel.expose(senderText)
+    // function senderText(message) {
+    //     var chatBox = document.getElementById("chat-canvas-body");
+    //     if (message.trim() !== "") {
+    //         chatBox.innerHTML += `<div class="row justify-content-end mb-4">
+    //         <div class = "width-size">
+    //         <div class="sender_message">${message}</div>
+    //     </div>`; 
     
-            // Scroll to the bottom of the chat box
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
-    }
+    //         // Scroll to the bottom of the chat box
+    //         chatBox.scrollTop = chatBox.scrollHeight;
+    //     }
+    // }
 
-    eel.expose(receiverText)
-    function receiverText(message) {
+    // eel.expose(receiverText)
+    // function receiverText(message) {
 
+    //     var chatBox = document.getElementById("chat-canvas-body");
+    //     if (message.trim() !== "") {
+    //         chatBox.innerHTML += `<div class="row justify-content-start mb-4">
+    //         <div class = "width-size">
+    //         <div class="receiver_message">${message}</div>
+    //         </div>
+    //     </div>`; 
+    
+    //         // Scroll to the bottom of the chat box
+    //         chatBox.scrollTop = chatBox.scrollHeight;
+    //     }
+        
+    // }
+eel.expose(senderText)
+function senderText(message) {
+    $(document).ready(function () {
         var chatBox = document.getElementById("chat-canvas-body");
-        if (message.trim() !== "") {
-            chatBox.innerHTML += `<div class="row justify-content-start mb-4">
-            <div class = "width-size">
-            <div class="receiver_message">${message}</div>
+        if (chatBox && message.trim() !== "") {
+            chatBox.innerHTML += `<div class="row justify-content-end mb-4">
+            <div class="width-size">
+                <div class="sender_message">${message}</div>
             </div>
         </div>`; 
-    
-            // Scroll to the bottom of the chat box
+
             chatBox.scrollTop = chatBox.scrollHeight;
         }
-        
-    }
+    });
+}
+
+eel.expose(receiverText)
+function receiverText(message) {
+    $(document).ready(function () {
+        var chatBox = document.getElementById("chat-canvas-body");
+        if (chatBox && message.trim() !== "") {
+            chatBox.innerHTML += `<div class="row justify-content-start mb-4">
+            <div class="width-size">
+                <div class="receiver_message">${message}</div>
+            </div>
+        </div>`; 
+
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+    });
+}
 
     
-    // // Hide Loader and display Face Auth animation
-    // eel.expose(hideLoader)
-    // function hideLoader() {
+    // Hide Loader and display Face Auth animation
+    eel.expose(hideLoader)
+    function hideLoader() {
 
-    //     $("#Loader").attr("hidden", true);
-    //     $("#FaceAuth").attr("hidden", false);
+        $("#Loader").attr("hidden", true);
+        $("#FaceAuth").attr("hidden", false);
 
-    // }
+    }
     // Hide Face auth and display Face Auth success animation
-    // eel.expose(hideFaceAuth)
-    // function hideFaceAuth() {
+    eel.expose(hideFaceAuth)
+    function hideFaceAuth() {
 
-    //     $("#FaceAuth").attr("hidden", true);
-    //     $("#FaceAuthSuccess").attr("hidden", false);
+        $("#FaceAuth").attr("hidden", true);
+        $("#FaceAuthSuccess").attr("hidden", false);
 
-    // }
-    // // Hide success and display 
-    // eel.expose(hideFaceAuthSuccess)
-    // function hideFaceAuthSuccess() {
+    }
+    // Hide success and display 
+    eel.expose(hideFaceAuthSuccess)
+    function hideFaceAuthSuccess() {
 
-    //     $("#FaceAuthSuccess").attr("hidden", true);
-    //     $("#HelloGreet").attr("hidden", false);
+        $("#FaceAuthSuccess").attr("hidden", true);
+        $("#HelloGreet").attr("hidden", false);
 
-    // }
+    }
 
 
-    // // Hide Start Page and display blob
-    // eel.expose(hideStart)
-    // function hideStart() {
+    // Hide Start Page and display blob
+    eel.expose(hideStart)
+    function hideStart() {
 
-    //     $("#Start").attr("hidden", true);
+        $("#Start").attr("hidden", true);
 
-    //     setTimeout(function () {
-    //         $("#Oval").addClass("animate__animated animate__zoomIn");
+        setTimeout(function () {
+            $("#Oval").addClass("animate__animated animate__zoomIn");
 
-    //     }, 1000)
-    //     setTimeout(function () {
-    //         $("#Oval").attr("hidden", false);
-    //     }, 1000)
-    // }
+        }, 1000)
+        setTimeout(function () {
+            $("#Oval").attr("hidden", false);
+        }, 1000)
+    }
 
 
 });
