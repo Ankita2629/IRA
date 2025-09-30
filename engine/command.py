@@ -6,8 +6,8 @@ def speak(text):
     text = str(text)
     engine = pyttsx3.init('sapi5')
     voices = engine.getProperty('voices') 
-    engine.setProperty('voice', voices[0].id)
-    engine.setProperty('rate', 150)
+    engine.setProperty('voice', voices[2].id)
+    engine.setProperty('rate', 175)
     eel.DisplayMessage(text)
     engine.say(text)
     eel.receiverText(text)
@@ -19,16 +19,16 @@ def takecommand():
     r = sr.Recognizer()
 
     with sr.Microphone() as source:
-        print('listening....')
-        eel.DisplayMessage('listening....')
+        print('Listening....')
+        eel.DisplayMessage('Listening....')
         r.pause_threshold = 1
         r.adjust_for_ambient_noise(source)
         
         audio = r.listen(source, 10, 6)
 
     try:
-        print('recognizing')
-        eel.DisplayMessage('recognizing....')
+        print('Recognizing')
+        eel.DisplayMessage('Recognizing....')
         query = r.recognize_google(audio, language='en-in')
         print(f"user said: {query}")
         eel.DisplayMessage(query)
