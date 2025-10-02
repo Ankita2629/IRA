@@ -1,3 +1,5 @@
+import patch_compat
+
 import multiprocessing
 import subprocess
 
@@ -28,3 +30,5 @@ if __name__ == '__main__':
         print("system stop")
         exit()
         
+
+
