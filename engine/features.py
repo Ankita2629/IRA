@@ -1,3 +1,4 @@
+import datetime
 import os
 import re
 from shlex import quote
@@ -6,11 +7,14 @@ import struct
 import subprocess
 import time
 import webbrowser
+import PyPDF2
 from playsound import playsound
 import eel
+import psutil
 import pvporcupine
 import pyaudio
 import pyautogui
+import requests
 from engine.command import speak
 from engine.config import ASSISTANT_NAME,LLM_KEY
 import pywhatkit as kit
@@ -188,4 +192,7 @@ def geminiai(query):
         speak(filter_text)
     except Exception as e:
         print("Error:",e)
+
+
+
 
