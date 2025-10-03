@@ -772,6 +772,212 @@ def list_available_wifi():
         print(f"List Wi-Fi error: {e}")
         speak("Sorry, I could not scan for Wi-Fi networks")
 
+#IMAGE GENERATION
+import requests
+from pathlib import Path
+import datetime
+import base64
+from io import BytesIO
+from PIL import Image
+
+def generate_image_pollinations(prompt, width=1024, height=1024):
+    """
+    Generate image using Pollinations AI (Free, No API Key Required)
+    """
+    try:
+        speak(f"Generating image: {prompt}. Please wait...")
+        
+        # Pollinations AI endpoint
+        url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(prompt)}"
+        params = {
+            "width": width,
+            "height": height,
+            "nologo": "true",
+            "enhance": "true"
+        }
+        
+        response = requests.get(url, params=params, timeout=60)
+        
+        if response.status_code == 200:
+            # Create Images directory
+            images_dir = Path.home() / "Pictures" / "IRA_Generated_Images"
+            images_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Save image
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            safe_prompt = "".join(c for c in prompt[:30] if c.isalnum() or c in (' ', '-', '_')).strip()
+            filename = images_dir / f"{safe_prompt}_{timestamp}.png"
+            
+            with open(filename, 'wb') as f:
+                f.write(response.content)
+            
+            speak(f"Image generated successfully and saved to Pictures folder")
+            print(f"Image saved: {filename}")
+            
+            # Optional: Open the image
+            try:
+                import os
+                os.startfile(str(filename))  # Windows
+            except:
+                pass
+                
+            return True
+        else:
+            speak("Failed to generate image. Please try again.")
+            return False
+            
+    except Exception as e:
+        print(f"Image generation error: {e}")
+        speak("Sorry, I could not generate the image right now.")
+        return False
+
+
+def generate_image_stable_diffusion(prompt, api_key=None):
+    """
+    Generate image using Stability AI (Requires API Key)
+    Get free API key from: https://platform.stability.ai/
+    """
+    try:
+        if not api_key:
+            speak("Stable Diffusion API key not configured")
+            return False
+        
+        speak(f"Generating high-quality image: {prompt}. This may take a moment...")
+        
+        url = "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image"
+        
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        
+        data = {
+            "text_prompts": [{"text": prompt}],
+            "cfg_scale": 7,
+            "height": 1024,
+            "width": 1024,
+            "samples": 1,
+            "steps": 30,
+        }
+        
+        response = requests.post(url, headers=headers, json=data, timeout=120)
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Create Images directory
+            images_dir = Path.home() / "Pictures" / "IRA_Generated_Images"
+            images_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Save image
+            for i, image in enumerate(data["artifacts"]):
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                safe_prompt = "".join(c for c in prompt[:30] if c.isalnum() or c in (' ', '-', '_')).strip()
+                filename = images_dir / f"{safe_prompt}_{timestamp}.png"
+                
+                img_data = base64.b64decode(image["base64"])
+                with open(filename, 'wb') as f:
+                    f.write(img_data)
+                
+                speak(f"High-quality image generated successfully")
+                print(f"Image saved: {filename}")
+                
+                # Open the image
+                try:
+                    import os
+                    os.startfile(str(filename))
+                except:
+                    pass
+                    
+            return True
+        else:
+            speak(f"Failed to generate image. Status: {response.status_code}")
+            return False
+            
+    except Exception as e:
+        print(f"Stable Diffusion error: {e}")
+        speak("Sorry, I could not generate the image with Stable Diffusion.")
+        return False
+
+
+def generate_image_huggingface(prompt, model="black-forest-labs/FLUX.1-schnell"):
+    """
+    Generate image using Hugging Face Inference API (Free)
+    Default model: FLUX.1-schnell (Fast and free)
+    """
+    try:
+        speak(f"Creating your image: {prompt}. Please wait...")
+        
+        API_URL = f"https://api-inference.huggingface.co/models/{model}"
+        
+        headers = {
+            "Content-Type": "application/json",
+        }
+        
+        payload = {
+            "inputs": prompt,
+        }
+        
+        response = requests.post(API_URL, headers=headers, json=payload, timeout=120)
+        
+        if response.status_code == 200:
+            # Create Images directory
+            images_dir = Path.home() / "Pictures" / "IRA_Generated_Images"
+            images_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Save image
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            safe_prompt = "".join(c for c in prompt[:30] if c.isalnum() or c in (' ', '-', '_')).strip()
+            filename = images_dir / f"{safe_prompt}_{timestamp}.png"
+            
+            with open(filename, 'wb') as f:
+                f.write(response.content)
+            
+            speak(f"Image created successfully and saved")
+            print(f"Image saved: {filename}")
+            
+            # Open the image
+            try:
+                import os
+                os.startfile(str(filename))
+            except:
+                pass
+                
+            return True
+        else:
+            speak("Image generation service is warming up. Please try again in a moment.")
+            return False
+            
+    except Exception as e:
+        print(f"Hugging Face generation error: {e}")
+        speak("Sorry, I could not generate the image right now.")
+        return False
+
+
+# Main image generation function (uses free service by default)
+def generate_image(prompt, service="pollinations", **kwargs):
+    """
+    Generate image using specified service
+    
+    Args:
+        prompt: Text description of image to generate
+        service: 'pollinations' (free, default), 'huggingface' (free), or 'stable-diffusion' (requires API key)
+        **kwargs: Additional parameters (api_key for stable-diffusion, width, height, etc.)
+    """
+    if service == "pollinations":
+        return generate_image_pollinations(prompt, 
+                                          width=kwargs.get('width', 1024),
+                                          height=kwargs.get('height', 1024))
+    elif service == "huggingface":
+        return generate_image_huggingface(prompt, 
+                                         model=kwargs.get('model', 'black-forest-labs/FLUX.1-schnell'))
+    elif service == "stable-diffusion":
+        return generate_image_stable_diffusion(prompt, 
+                                              api_key=kwargs.get('api_key'))
+    else:
+        speak("Unknown image generation service")
+        return False
+
 
 @eel.expose
 def allCommands(message=1):
@@ -1000,11 +1206,30 @@ def allCommands(message=1):
                         query = takecommand()
                     elif "phone call" in query:
                         message = 'call'
+                    
                     else:
                         message = 'video call'
                     
                     whatsApp(contact_no, query, message, name)
-        
+        # Image Generation Commands
+        elif "generate image" in query or "create image" in query or "draw image" in query or "make image" in query:
+            speak("What image would you like me to generate? Please describe it in detail.")
+            image_prompt = takecommand()
+    
+            if image_prompt:
+                generate_image(image_prompt, service="pollinations")
+            else:
+                speak("I didn't catch the image description. Please try again.")
+
+        elif "generate photo" in query or "create picture" in query or "make picture" in query:
+            speak("Please describe the photo you want me to create")
+            image_prompt = takecommand()
+    
+            if image_prompt:
+                generate_image(image_prompt, service="pollinations")
+            else:
+                speak("Image description not recognized.")
+
         else:
             if query.strip():
                 from engine.features import geminiai
@@ -1043,6 +1268,7 @@ def initialize():
     # Start reminder checker thread
     reminder_thread = threading.Thread(target=reminder_checker, daemon=True)
     reminder_thread.start()
+
 
 
 if __name__ == "__main__":
