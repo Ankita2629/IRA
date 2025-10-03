@@ -615,7 +615,162 @@ def check_system_usage():
     except Exception as e:
         print(f"System usage error: {e}")
         speak("Sorry, I could not check system usage right now.")
+def get_wifi_info():
+    """Get Wi-Fi network information"""
+    try:
+        system_os = platform.system()
+        
+        if system_os == "Windows":
+            # Get connected Wi-Fi name
+            result = os.popen('netsh wlan show interfaces').read()
+            
+            if "disconnected" in result.lower() or "SSID" not in result:
+                speak("You are not connected to any Wi-Fi network")
+                return
+            
+            # Extract SSID (network name)
+            ssid = None
+            signal = None
+            for line in result.split('\n'):
+                if "SSID" in line and "BSSID" not in line:
+                    ssid = line.split(":")[1].strip()
+                elif "Signal" in line:
+                    signal = line.split(":")[1].strip()
+            
+            if ssid:
+                info = f"You are connected to {ssid}"
+                if signal:
+                    info += f" with signal strength {signal}"
+                speak(info)
+            else:
+                speak("Could not retrieve Wi-Fi information")
+                
+        elif system_os == "Linux":
+            # For Linux systems
+            result = os.popen('iwgetid -r').read().strip()
+            if result:
+                speak(f"You are connected to {result}")
+            else:
+                speak("You are not connected to any Wi-Fi network")
+                
+        elif system_os == "Darwin":  # macOS
+            result = os.popen('/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I | grep " SSID"').read()
+            if result:
+                ssid = result.split(":")[1].strip()
+                speak(f"You are connected to {ssid}")
+            else:
+                speak("You are not connected to any Wi-Fi network")
+        else:
+            speak("Wi-Fi info not available for this operating system")
+            
+    except Exception as e:
+        print(f"Wi-Fi info error: {e}")
+        speak("Sorry, I could not retrieve Wi-Fi information")
 
+
+def get_network_info():
+    """Get detailed network information including IP addresses"""
+    try:
+        # Get all network interfaces
+        addrs = psutil.net_if_addrs()
+        stats = psutil.net_if_stats()
+        
+        active_networks = []
+        
+        for interface_name, interface_addresses in addrs.items():
+            # Check if interface is up
+            if interface_name in stats and stats[interface_name].isup:
+                for address in interface_addresses:
+                    # IPv4 address
+                    if str(address.family) == 'AddressFamily.AF_INET':
+                        active_networks.append({
+                            'interface': interface_name,
+                            'ip': address.address,
+                            'netmask': address.netmask
+                        })
+        
+        if active_networks:
+            speak("Here is your network information:")
+            for network in active_networks:
+                # Skip loopback
+                if network['ip'] != '127.0.0.1':
+                    speak(f"Interface {network['interface']}: IP address {network['ip']}")
+        else:
+            speak("No active network connections found")
+            
+    except Exception as e:
+        print(f"Network info error: {e}")
+        speak("Sorry, I could not retrieve network information")
+
+
+def show_wifi_password(network_name=None):
+    """Show saved Wi-Fi password (Windows only)"""
+    try:
+        if platform.system() != "Windows":
+            speak("This feature is only available on Windows")
+            return
+        
+        if not network_name:
+            # Get current network
+            result = os.popen('netsh wlan show interfaces').read()
+            for line in result.split('\n'):
+                if "SSID" in line and "BSSID" not in line:
+                    network_name = line.split(":")[1].strip()
+                    break
+        
+        if not network_name:
+            speak("Could not determine the network name")
+            return
+        
+        # Get password
+        command = f'netsh wlan show profile name="{network_name}" key=clear'
+        result = os.popen(command).read()
+        
+        password = None
+        for line in result.split('\n'):
+            if "Key Content" in line:
+                password = line.split(":")[1].strip()
+                break
+        
+        if password:
+            speak(f"The password for {network_name} is {password}")
+            print(f"Password: {password}")  # Also print for security
+        else:
+            speak(f"Could not retrieve password for {network_name}. You may not have saved this network.")
+            
+    except Exception as e:
+        print(f"Wi-Fi password error: {e}")
+        speak("Sorry, I could not retrieve the Wi-Fi password")
+
+
+def list_available_wifi():
+    """List all available Wi-Fi networks"""
+    try:
+        if platform.system() == "Windows":
+            speak("Scanning for available Wi-Fi networks. Please wait.")
+            result = os.popen('netsh wlan show networks mode=bssid').read()
+            
+            networks = []
+            for line in result.split('\n'):
+                if "SSID" in line and "BSSID" not in line:
+                    ssid = line.split(":")[1].strip()
+                    if ssid and ssid != "":
+                        networks.append(ssid)
+            
+            if networks:
+                speak(f"Found {len(networks)} networks:")
+                for i, network in enumerate(networks[:5], 1):  # Limit to first 5
+                    speak(f"{i}. {network}")
+                if len(networks) > 5:
+                    speak(f"And {len(networks) - 5} more networks")
+            else:
+                speak("No Wi-Fi networks found")
+        else:
+            speak("This feature is currently only available on Windows")
+            
+    except Exception as e:
+        print(f"List Wi-Fi error: {e}")
+        speak("Sorry, I could not scan for Wi-Fi networks")
 
 
 @eel.expose
@@ -786,7 +941,39 @@ def allCommands(message=1):
             check_disk_usage(drive)
         elif "check cpu" in query or "cpu usage" in query or "ram usage" in query or "system usage" in query:
             check_system_usage()
-
+        elif "wifi info" in query or "wi-fi info" in query or "network name" in query:
+            get_wifi_info()
+        
+        elif "network info" in query or "ip address" in query or "my ip" in query:
+            get_network_info()
+        
+        elif "wifi password" in query or "wi-fi password" in query or "network password" in query:
+            if "current" in query or "this" in query:
+                show_wifi_password()
+            else:
+                speak("Which network password would you like?")
+                network_name = takecommand()
+                if network_name:
+                    show_wifi_password(network_name)
+        
+        elif "scan wifi" in query or "available networks" in query or "list networks" in query:
+            list_available_wifi()
+        elif "who are you" in query or "what is your name" in query or "your name" in query:
+            speak("I am IRA, your intelligent voice assistant. I'm here to help you with various tasks.")
+        
+        elif "who created you" in query or "who made you" in query or "your creator" in query or "who developed you" in query:
+            speak("I was created by Ankita, Anjali, Shubham and Amrita.")
+        
+        elif "who is your creator" in query or "who is your developer" in query:
+            speak("My creators are Ankita, Anjali, Shubham and Amrita. They developed me to assist you.")
+        
+        elif "tell me about yourself" in query or "introduce yourself" in query:
+            speak("Hello! I am IRA, an intelligent voice assistant created by Ankita, Anjali, Shubham and Amrita. I can help you with many tasks like checking weather, managing files, controlling your system, and much more. Just ask me anything!")
+        elif "what is unique" in query or "what makes you different" in query or "what makes you special" in query or "your uniqueness" in query or "why choose you" in query:
+            speak("What makes me unique is my multilingual capability. I can speak and understand over 27 languages including English, Hindi, Spanish, French, German, Tamil, Telugu, Bengali, Arabic, Chinese, Japanese, Korean, and many more. "
+                  "You can seamlessly switch between languages anytime. I also offer comprehensive system control, including Wi-Fi management, disk usage monitoring, battery status, volume control, screenshot capture, and even reveal Wi-Fi passwords. "
+                  "Plus, I have built-in task management, reminders, note-taking, Wikipedia search, weather updates, and internet speed testing. "
+                  "I'm designed to be your complete personal assistant with the power of multiple languages at your command.")
         elif "send message" in query or "phone call" in query or "video call" in query:
             from engine.features import findContact, whatsApp, makeCall, sendMessage
             contact_no, name = findContact(query)
