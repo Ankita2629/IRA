@@ -21,7 +21,7 @@ def AuthenticateFace():
     id = 2  # number of persons you want to Recognize
 
 
-    names = ['', 'Anjali']  # names, leave first empty bcz counter starts from 0
+    names = ['', 'Ankita']  # names, leave first empty bcz counter starts from 0
 
 
     cam = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # cv2.CAP_DSHOW to remove warning
