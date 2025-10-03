@@ -38,3 +38,5 @@ recognizer.train(faces, np.array(ids))
 recognizer.write('engine\\auth\\trainer\\trainer.yml')  # Save the trained model as trainer.yml
 
 print("Model trained, Now we can recognize your face.")
+
+

@@ -5,6 +5,8 @@ from engine.command import *
 from engine.command import allCommands, hotword_listener
 from engine.auth import recoganize
 from multiprocessing import Process
+
+
 def start():
 
  eel.init("www")
