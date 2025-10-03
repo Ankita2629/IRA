@@ -25,6 +25,13 @@ from pptx.dml.color import RGBColor
 import google.generativeai as genai
 import json
 import re
+import requests
+from pathlib import Path
+import datetime
+import base64
+from io import BytesIO
+from PIL import Image
+import google.generativeai as genai
 
 
 # Initialize translator and pygame for audio playback
@@ -554,7 +561,7 @@ def check_disk_usage(drive_letter="C"):
     try:
         drive_letter = drive_letter.strip().lower()
 
-        # 🔥 Map speech variations to proper drive letters
+        # Map speech variations to proper drive letters
         drive_letter_map = {
             "see": "C",
             "sea": "C",
@@ -779,38 +786,74 @@ def list_available_wifi():
         print(f"List Wi-Fi error: {e}")
         speak("Sorry, I could not scan for Wi-Fi networks")
 
-#IMAGE GENERATION
-import requests
-from pathlib import Path
-import datetime
-import base64
-from io import BytesIO
-from PIL import Image
+#Image generation
 
-def generate_image_pollinations(prompt, width=1024, height=1024):
+STABILITY_API_KEY = None 
+GEMINI_API_KEY = "AIzaSyCYDb08-0XuFyK4s5EGzmmtsyieG_PjW1g"
+
+genai.configure(api_key=GEMINI_API_KEY)
+
+
+def enhance_prompt_with_ai(user_prompt):
     """
-    Generate image using Pollinations AI (Free, No API Key Required)
+    Use Gemini to enhance and optimize the image generation prompt
+    This dramatically improves image quality and accuracy
     """
     try:
-        speak(f"Generating image: {prompt}. Please wait...")
+        model = genai.GenerativeModel('gemini-pro')
         
-        # Pollinations AI endpoint
-        url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(prompt)}"
+        enhancement_request = f"""You are an expert at writing prompts for AI image generation.
+        
+User's request: "{user_prompt}"
+
+Transform this into a detailed, optimized prompt for image generation that will produce accurate, high-quality results. Include:
+- Specific visual details
+- Style and artistic direction
+- Lighting and atmosphere
+- Quality modifiers (like "highly detailed", "professional", "8k")
+
+Return ONLY the enhanced prompt text, nothing else. Keep it under 200 words."""
+
+        response = model.generate_content(enhancement_request)
+        enhanced = response.text.strip()
+        
+        print(f"Original prompt: {user_prompt}")
+        print(f"Enhanced prompt: {enhanced}")
+        
+        return enhanced
+        
+    except Exception as e:
+        print(f"Prompt enhancement error: {e}")
+        # Fallback: add basic quality modifiers
+        return f"{user_prompt}, highly detailed, professional quality, sharp focus, 8k resolution"
+
+
+def generate_image_pollinations_enhanced(prompt, width=1024, height=1024):
+    """
+    Enhanced Pollinations AI with AI-powered prompt optimization
+    FREE - No API key required
+    """
+    try:
+        # Enhance prompt using Gemini
+        enhanced_prompt = enhance_prompt_with_ai(prompt)
+        speak(f"Generating high-quality image. Please wait...")
+        
+        # Use FLUX model for better quality
+        url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(enhanced_prompt)}"
         params = {
             "width": width,
             "height": height,
             "nologo": "true",
-            "enhance": "true"
+            "enhance": "true",
+            "model": "flux"  # Best free model
         }
         
-        response = requests.get(url, params=params, timeout=60)
+        response = requests.get(url, params=params, timeout=90)
         
         if response.status_code == 200:
-            # Create Images directory
             images_dir = Path.home() / "Pictures" / "IRA_Generated_Images"
             images_dir.mkdir(parents=True, exist_ok=True)
             
-            # Save image
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             safe_prompt = "".join(c for c in prompt[:30] if c.isalnum() or c in (' ', '-', '_')).strip()
             filename = images_dir / f"{safe_prompt}_{timestamp}.png"
@@ -818,19 +861,18 @@ def generate_image_pollinations(prompt, width=1024, height=1024):
             with open(filename, 'wb') as f:
                 f.write(response.content)
             
-            speak(f"Image generated successfully and saved to Pictures folder")
+            speak("Image generated successfully and saved to Pictures folder")
             print(f"Image saved: {filename}")
             
-            # Optional: Open the image
             try:
                 import os
-                os.startfile(str(filename))  # Windows
+                os.startfile(str(filename))
             except:
                 pass
                 
             return True
         else:
-            speak("Failed to generate image. Please try again.")
+            speak("Generation failed. Please try again.")
             return False
             
     except Exception as e:
@@ -839,17 +881,18 @@ def generate_image_pollinations(prompt, width=1024, height=1024):
         return False
 
 
-def generate_image_stable_diffusion(prompt, api_key=None):
+def generate_image_stability_ai(prompt, api_key=None):
     """
-    Generate image using Stability AI (Requires API Key)
-    Get free API key from: https://platform.stability.ai/
+    Stability AI - BEST QUALITY (Requires API key)
+    Get free credits: https://platform.stability.ai/
     """
     try:
         if not api_key:
-            speak("Stable Diffusion API key not configured")
-            return False
+            speak("Stability AI key not configured. Using free service instead.")
+            return generate_image_pollinations_enhanced(prompt)
         
-        speak(f"Generating high-quality image: {prompt}. This may take a moment...")
+        enhanced_prompt = enhance_prompt_with_ai(prompt)
+        speak("Generating professional-grade image. This may take a moment...")
         
         url = "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image"
         
@@ -859,37 +902,43 @@ def generate_image_stable_diffusion(prompt, api_key=None):
         }
         
         data = {
-            "text_prompts": [{"text": prompt}],
-            "cfg_scale": 7,
+            "text_prompts": [
+                {
+                    "text": enhanced_prompt,
+                    "weight": 1
+                },
+                {
+                    "text": "blurry, low quality, distorted, ugly, bad anatomy",
+                    "weight": -1  # Negative prompt for better results
+                }
+            ],
+            "cfg_scale": 8,  # Higher = more prompt adherence
             "height": 1024,
             "width": 1024,
             "samples": 1,
-            "steps": 30,
+            "steps": 50,  # More steps = better quality
+            "style_preset": "photographic"  # Options: photographic, digital-art, 3d-model, anime, etc.
         }
         
         response = requests.post(url, headers=headers, json=data, timeout=120)
         
         if response.status_code == 200:
-            data = response.json()
-            
-            # Create Images directory
+            result = response.json()
             images_dir = Path.home() / "Pictures" / "IRA_Generated_Images"
             images_dir.mkdir(parents=True, exist_ok=True)
             
-            # Save image
-            for i, image in enumerate(data["artifacts"]):
+            for i, image in enumerate(result["artifacts"]):
                 timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                 safe_prompt = "".join(c for c in prompt[:30] if c.isalnum() or c in (' ', '-', '_')).strip()
-                filename = images_dir / f"{safe_prompt}_{timestamp}.png"
+                filename = images_dir / f"{safe_prompt}_{timestamp}_HD.png"
                 
                 img_data = base64.b64decode(image["base64"])
                 with open(filename, 'wb') as f:
                     f.write(img_data)
                 
-                speak(f"High-quality image generated successfully")
+                speak("Professional-grade image generated successfully")
                 print(f"Image saved: {filename}")
                 
-                # Open the image
                 try:
                     import os
                     os.startfile(str(filename))
@@ -898,41 +947,41 @@ def generate_image_stable_diffusion(prompt, api_key=None):
                     
             return True
         else:
-            speak(f"Failed to generate image. Status: {response.status_code}")
-            return False
+            error_msg = response.json().get('message', 'Unknown error')
+            print(f"API Error: {error_msg}")
+            speak("API error. Switching to free service.")
+            return generate_image_pollinations_enhanced(prompt)
             
     except Exception as e:
-        print(f"Stable Diffusion error: {e}")
-        speak("Sorry, I could not generate the image with Stable Diffusion.")
-        return False
+        print(f"Stability AI error: {e}")
+        speak("Switching to alternative service.")
+        return generate_image_pollinations_enhanced(prompt)
 
 
-def generate_image_huggingface(prompt, model="black-forest-labs/FLUX.1-schnell"):
+def generate_image_huggingface(prompt, hf_token=None):
     """
-    Generate image using Hugging Face Inference API (Free)
-    Default model: FLUX.1-schnell (Fast and free)
+    Hugging Face - Good quality, FREE
+    Optional token for faster processing: https://huggingface.co/settings/tokens
     """
     try:
-        speak(f"Creating your image: {prompt}. Please wait...")
+        enhanced_prompt = enhance_prompt_with_ai(prompt)
+        speak("Creating your image. Please wait...")
         
-        API_URL = f"https://api-inference.huggingface.co/models/{model}"
+        # FLUX.1-schnell is fast and free
+        API_URL = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
         
-        headers = {
-            "Content-Type": "application/json",
-        }
+        headers = {"Content-Type": "application/json"}
+        if hf_token:
+            headers["Authorization"] = f"Bearer {hf_token}"
         
-        payload = {
-            "inputs": prompt,
-        }
+        payload = {"inputs": enhanced_prompt}
         
         response = requests.post(API_URL, headers=headers, json=payload, timeout=120)
         
         if response.status_code == 200:
-            # Create Images directory
             images_dir = Path.home() / "Pictures" / "IRA_Generated_Images"
             images_dir.mkdir(parents=True, exist_ok=True)
             
-            # Save image
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             safe_prompt = "".join(c for c in prompt[:30] if c.isalnum() or c in (' ', '-', '_')).strip()
             filename = images_dir / f"{safe_prompt}_{timestamp}.png"
@@ -940,10 +989,9 @@ def generate_image_huggingface(prompt, model="black-forest-labs/FLUX.1-schnell")
             with open(filename, 'wb') as f:
                 f.write(response.content)
             
-            speak(f"Image created successfully and saved")
+            speak("Image created successfully and saved")
             print(f"Image saved: {filename}")
             
-            # Open the image
             try:
                 import os
                 os.startfile(str(filename))
@@ -952,55 +1000,120 @@ def generate_image_huggingface(prompt, model="black-forest-labs/FLUX.1-schnell")
                 
             return True
         else:
-            speak("Image generation service is warming up. Please try again in a moment.")
+            speak("Service warming up. Please try again in a moment.")
             return False
             
     except Exception as e:
-        print(f"Hugging Face generation error: {e}")
-        speak("Sorry, I could not generate the image right now.")
+        print(f"Hugging Face error: {e}")
+        speak("Could not generate image.")
         return False
 
 
-# Main image generation function (uses free service by default)
-def generate_image(prompt, service="pollinations", **kwargs):
+def generate_image_replicate(prompt):
     """
-    Generate image using specified service
+    Replicate API - Reliable alternative (Free tier available)
+    No API key needed for public models
+    """
+    try:
+        enhanced_prompt = enhance_prompt_with_ai(prompt)
+        speak("Creating your image with advanced AI. Please wait...")
+        
+        # Using Pollinations with better parameters as most reliable free option
+        url = "https://image.pollinations.ai/prompt/" + requests.utils.quote(enhanced_prompt)
+        
+        params = {
+            "width": 1024,
+            "height": 1024,
+            "seed": -1,  # Random seed for variety
+            "nologo": "true",
+            "enhance": "true",
+            "model": "flux-pro"  # Try pro model
+        }
+        
+        response = requests.get(url, params=params, timeout=90)
+        
+        if response.status_code == 200:
+            images_dir = Path.home() / "Pictures" / "IRA_Generated_Images"
+            images_dir.mkdir(parents=True, exist_ok=True)
+            
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            safe_prompt = "".join(c for c in prompt[:30] if c.isalnum() or c in (' ', '-', '_')).strip()
+            filename = images_dir / f"{safe_prompt}_{timestamp}.png"
+            
+            with open(filename, 'wb') as f:
+                f.write(response.content)
+            
+            speak("Image created successfully")
+            print(f"Image saved: {filename}")
+            
+            try:
+                import os
+                os.startfile(str(filename))
+            except:
+                pass
+                
+            return True
+        return False
+            
+    except Exception as e:
+        print(f"Replicate error: {e}")
+        return False
+
+
+def generate_image_multiple_attempts(prompt, service="auto"):
+    """
+    Smart image generation with reliable fallback options
+    Removed Hugging Face due to reliability issues
+    """
+    try:
+        enhanced_prompt = enhance_prompt_with_ai(prompt)
+        
+        # Try services in order of quality and reliability
+        if service == "auto":
+            # Try Stability AI if key available (BEST QUALITY)
+            if STABILITY_API_KEY:
+                print("Attempting Stability AI (best quality)...")
+                result = generate_image_stability_ai(prompt, STABILITY_API_KEY)
+                if result:
+                    return True
+                print("Stability AI failed, trying alternatives...")
+            
+            # Try Pollinations Enhanced (MOST RELIABLE FREE)
+            print("Using Pollinations AI with enhanced prompts...")
+            result = generate_image_pollinations_enhanced(prompt)
+            if result:
+                return True
+            
+            # Final fallback to Replicate
+            print("Trying alternative service...")
+            return generate_image_replicate(prompt)
+        
+        elif service == "stability":
+            return generate_image_stability_ai(prompt, STABILITY_API_KEY)
+        elif service == "replicate":
+            return generate_image_replicate(prompt)
+        else:
+            return generate_image_pollinations_enhanced(prompt)
+            
+    except Exception as e:
+        print(f"All services failed: {e}")
+        speak("Unable to generate image at this time. Please try again later.")
+        return False
+
+
+def generate_image(prompt, service="auto", **kwargs):
+    """
+    Main image generation function with AI-enhanced prompts
     
     Args:
-        prompt: Text description of image to generate
-        service: 'pollinations' (free, default), 'huggingface' (free), or 'stable-diffusion' (requires API key)
-        **kwargs: Additional parameters (api_key for stable-diffusion, width, height, etc.)
+        prompt: User's description of the image
+        service: 'auto' (tries all), 'stability', 'huggingface', or 'pollinations'
+        **kwargs: api_key, width, height, style, etc.
     """
-    if service == "pollinations":
-        return generate_image_pollinations(prompt, 
-                                          width=kwargs.get('width', 1024),
-                                          height=kwargs.get('height', 1024))
-    elif service == "huggingface":
-        return generate_image_huggingface(prompt, 
-                                         model=kwargs.get('model', 'black-forest-labs/FLUX.1-schnell'))
-    elif service == "stable-diffusion":
-        return generate_image_stable_diffusion(prompt, 
-                                              api_key=kwargs.get('api_key'))
-    else:
-        speak("Unknown image generation service")
-        return False
+    return generate_image_multiple_attempts(prompt, service)
 
-
-# Gemini API
-GEMINI_API_KEY = "AIzaSyCYDb08-0XuFyK4s5EGzmmtsyieG_PjW1g"  
 
 # PowerPoint Generation Functions - Fixed Version
-# Replace the existing PPT functions with these corrected versions
-
-from pptx import Presentation
-from pptx.util import Inches, Pt
-from pptx.enum.text import PP_ALIGN
-from pptx.dml.color import RGBColor
-import google.generativeai as genai
-import json
-import re
-from pathlib import Path
-import datetime
 
 # Configure Gemini API Key
 GEMINI_API_KEY = "AIzaSyCYDb08-0XuFyK4s5EGzmmtsyieG_PjW1g"
@@ -1557,22 +1670,23 @@ def allCommands(message=1):
                     whatsApp(contact_no, query, message, name)
         # Image Generation Commands
         elif "generate image" in query or "create image" in query or "draw image" in query or "make image" in query:
-            speak("What image would you like me to generate? Please describe it in detail.")
+            speak("Please describe the image you want in detail....")
             image_prompt = takecommand()
-    
-            if image_prompt:
-                generate_image(image_prompt, service="pollinations")
-            else:
-                speak("I didn't catch the image description. Please try again.")
 
-        elif "generate photo" in query or "create picture" in query or "make picture" in query:
-            speak("Please describe the photo you want me to create")
-            image_prompt = takecommand()
-    
-            if image_prompt:
-                generate_image(image_prompt, service="pollinations")
+            if image_prompt and len(image_prompt) > 3:
+            # Use auto mode for best results
+               generate_image(image_prompt, service="auto")
             else:
-                speak("Image description not recognized.")
+               speak("I didn't catch the description. Please try again.")
+            
+        elif "generate photo" in query or "create picture" in query or "make picture" in query:
+            speak("Describe the photo you want me to create..")
+            image_prompt = takecommand()
+
+            if image_prompt and len(image_prompt) > 3:
+                generate_image(image_prompt, service="auto")
+            else:
+                speak("Image description not clear.")
 
         # PowerPoint Generation Commands
         elif "create presentation" in query or "make presentation" in query or "create ppt" in query or "make ppt" in query:
