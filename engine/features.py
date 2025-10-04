@@ -393,3 +393,4 @@ if __name__ == "__main__":
     # Test contact search
     mobile, name = findContact("send message to john")
     print(f"Found: {name} - {mobile}")
+    print(f"Found: {name} - {mobile}")
