@@ -28,6 +28,15 @@ from pptx.dml.color import RGBColor
 import google.generativeai as genai
 import json
 import re
+import subprocess
+import pyperclip
+import feedparser
+
+import requests
+import datetime
+from pathlib import Path
+import json
+
 
 translator = Translator()
 pygame.mixer.init()
@@ -1328,53 +1337,1023 @@ def create_simple_ppt(title, slides_content):
         return False
 
 
-def read_text_file(file_path):
-    """Read a .txt file and speak its contents"""
+def find_file_by_name(filename, language="english"):
+    """
+    Search for a file by name in common locations
+    Returns full path if found, None otherwise
+    """
     try:
-        if not os.path.exists(file_path):
-            speak("The specified text file does not exist.")
-            return
+        # Common search locations
+        search_paths = [
+            Path.home() / "Documents",
+            Path.home() / "Downloads",
+            Path.home() / "Desktop",
+            Path.home() / "Documents" / "IRA_Code_Files",
+            Path.home() / "Documents" / "IRA_Presentations",
+            Path.home() / "Documents" / "AssistantNotes",
+            Path.home() / "Pictures",
+            Path.home() / "Music",
+            Path.home() / "Videos",
+            Path.home(),  # Home directory
+        ]
+        
+        # Clean filename
+        filename = filename.strip().lower()
+        
+        # Replace spoken words with actual symbols
+        filename = filename.replace(" dot ", ".")
+        filename = filename.replace(" underscore ", "_")
+        filename = filename.replace(" dash ", "-")
+        
+        found_files = []
+        
+        if language == "hindi":
+            speak(f"{filename} को खोजा जा रहा है", language="hindi")
+        else:
+            speak(f"Searching for {filename}")
+        
+        print(f"\nSearching for: {filename}")
+        print("Searching in common locations...")
+        
+        for search_path in search_paths:
+            if search_path.exists():
+                try:
+                    # Search in directory and subdirectories
+                    for root, dirs, files in os.walk(search_path):
+                        for file in files:
+                            if filename in file.lower():
+                                full_path = os.path.join(root, file)
+                                found_files.append(full_path)
+                                print(f"Found: {full_path}")
+                        
+                        # Don't go too deep (max 2 levels)
+                        if root.count(os.sep) - str(search_path).count(os.sep) >= 2:
+                            dirs.clear()
+                            
+                except PermissionError:
+                    continue
+        
+        if found_files:
+            if len(found_files) == 1:
+                if language == "hindi":
+                    speak("फ़ाइल मिल गई", language="hindi")
+                else:
+                    speak("File found")
+                return found_files[0]
+            else:
+                # Multiple files found
+                if language == "hindi":
+                    speak(f"{len(found_files)} फ़ाइलें मिलीं। पहली फ़ाइल उपयोग की जाएगी", language="hindi")
+                else:
+                    speak(f"Found {len(found_files)} files. Using the first one")
+                
+                # Show all found files
+                for i, file_path in enumerate(found_files[:5], 1):
+                    print(f"{i}. {file_path}")
+                
+                return found_files[0]
+        else:
+            if language == "hindi":
+                speak(f"{filename} नहीं मिली। कृपया पूरा path बताएं", language="hindi")
+            else:
+                speak(f"Could not find {filename}. Please provide the full path")
+            return None
+            
+    except Exception as e:
+        print(f"File search error: {e}")
+        return None
+
+
+def read_text_file_smart(filename, language="english"):
+    """Read text file by searching with filename only"""
+    try:
+        # Try to find the file
+        file_path = find_file_by_name(filename, language)
+        
+        if not file_path:
+            return False
+        
+        print(f"\nReading file: {file_path}")
+        
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read().strip()
+        
         if content:
-            speak("Reading text file content now.")
-            for chunk in [content[i:i+3000] for i in range(0, len(content), 3000)]:
-                speak(chunk)
+            if language == "hindi":
+                speak("फ़ाइल पढ़ी जा रही है", language="hindi")
+            else:
+                speak("Reading file")
+            
+            chunks = [content[i:i+2000] for i in range(0, len(content), 2000)]
+            
+            for chunk in chunks:
+                if language == "hindi":
+                    speak(chunk, language="hindi")
+                else:
+                    speak(chunk)
+                time.sleep(0.5)
+            
+            if language == "hindi":
+                speak("फ़ाइल पढ़ना पूरा हुआ", language="hindi")
+            else:
+                speak("Finished reading")
+            return True
         else:
-            speak("The text file is empty.")
+            if language == "hindi":
+                speak("फ़ाइल खाली है", language="hindi")
+            else:
+                speak("File is empty")
+            return False
+            
     except Exception as e:
-        print(f"Text file read error: {e}")
-        speak("Sorry, I could not read the text file.")
+        print(f"Read error: {e}")
+        if language == "hindi":
+            speak("फ़ाइल नहीं पढ़ी जा सकी", language="hindi")
+        else:
+            speak("Could not read the file")
+        return False
 
-def read_pdf_file(file_path, start_page=0, end_page=None):
-    """Read a PDF file aloud using PyPDF2"""
+
+def read_pdf_file_smart(filename, start_page=0, end_page=None, language="english"):
+    """Read PDF file by searching with filename only"""
     try:
-        if not os.path.exists(file_path):
-            speak("The specified PDF file does not exist.")
-            return
+        import PyPDF2
+        
+        file_path = find_file_by_name(filename, language)
+        
+        if not file_path:
+            return False
+        
+        print(f"\nReading PDF: {file_path}")
+        
         with open(file_path, "rb") as f:
             reader = PyPDF2.PdfReader(f)
             num_pages = len(reader.pages)
+            
             if end_page is None or end_page > num_pages:
                 end_page = num_pages
+            
             if start_page < 0 or start_page >= num_pages:
-                speak("Invalid starting page number.")
-                return
-            speak(f"Reading PDF from page {start_page+1} to {end_page}")
+                if language == "hindi":
+                    speak("गलत पेज नंबर", language="hindi")
+                else:
+                    speak("Invalid page number")
+                return False
+            
+            if language == "hindi":
+                speak(f"पीडीएफ पढ़ी जा रही है। कुल {num_pages} पेज हैं", language="hindi")
+            else:
+                speak(f"Reading PDF. Total {num_pages} pages")
+            
             for i in range(start_page, end_page):
                 try:
                     text = reader.pages[i].extract_text()
+                    
                     if text and text.strip():
-                        for chunk in [text[j:j+3000] for j in range(0, len(text), 3000)]:
-                            speak(chunk)
+                        if language == "hindi":
+                            speak(f"पेज {i+1}", language="hindi")
+                        else:
+                            speak(f"Page {i+1}")
+                        
+                        chunks = [text[j:j+2000] for j in range(0, len(text), 2000)]
+                        
+                        for chunk in chunks:
+                            if language == "hindi":
+                                speak(chunk, language="hindi")
+                            else:
+                                speak(chunk)
+                            time.sleep(0.3)
                     else:
-                        speak(f"Page {i+1} has no readable text.")
+                        if language == "hindi":
+                            speak(f"पेज {i+1} खाली है", language="hindi")
+                        else:
+                            speak(f"Page {i+1} is empty")
+                            
                 except Exception as e:
-                    print(f"Error reading page {i+1}: {e}")
-                    speak(f"Could not read page {i+1}.")
+                    print(f"Error on page {i+1}: {e}")
+                    continue
+            
+            if language == "hindi":
+                speak("पीडीएफ पढ़ना पूरा हुआ", language="hindi")
+            else:
+                speak("Finished reading PDF")
+            return True
+            
+    except ImportError:
+        speak("PyPDF2 is not installed. Please run: pip install PyPDF2")
+        return False
     except Exception as e:
         print(f"PDF read error: {e}")
-        speak("Sorry, I could not read the PDF file.")
+        if language == "hindi":
+            speak("पीडीएफ नहीं पढ़ी जा सकी", language="hindi")
+        else:
+            speak("Could not read PDF")
+        return False
+
+
+def read_word_document_smart(filename, language="english"):
+    """Read Word document by searching with filename only"""
+    try:
+        import docx
+        
+        file_path = find_file_by_name(filename, language)
+        
+        if not file_path:
+            return False
+        
+        print(f"\nReading Word document: {file_path}")
+        
+        doc = docx.Document(file_path)
+        
+        if language == "hindi":
+            speak("वर्ड डॉक्यूमेंट पढ़ा जा रहा है", language="hindi")
+        else:
+            speak("Reading Word document")
+        
+        full_text = []
+        for para in doc.paragraphs:
+            if para.text.strip():
+                full_text.append(para.text)
+        
+        content = "\n".join(full_text)
+        
+        if content:
+            chunks = [content[i:i+2000] for i in range(0, len(content), 2000)]
+            
+            for chunk in chunks:
+                if language == "hindi":
+                    speak(chunk, language="hindi")
+                else:
+                    speak(chunk)
+                time.sleep(0.3)
+            
+            if language == "hindi":
+                speak("डॉक्यूमेंट पढ़ना पूरा हुआ", language="hindi")
+            else:
+                speak("Finished reading document")
+            return True
+        else:
+            if language == "hindi":
+                speak("डॉक्यूमेंट खाली है", language="hindi")
+            else:
+                speak("Document is empty")
+            return False
+            
+    except ImportError:
+        speak("python-docx is not installed. Please run: pip install python-docx")
+        return False
+    except Exception as e:
+        print(f"Word read error: {e}")
+        if language == "hindi":
+            speak("वर्ड फ़ाइल नहीं पढ़ी जा सकी", language="hindi")
+        else:
+            speak("Could not read Word document")
+        return False
+
+
+# Configure Gemini API
+GEMINI_API_KEY = "AIzaSyCYDb08-0XuFyK4s5EGzmmtsyieG_PjW1g"
+genai.configure(api_key=GEMINI_API_KEY)
+
+def write_code_in_vscode(code_description=None):
+    """
+    Open VS Code and write code based on voice description
+    """
+    try:
+        if not code_description:
+            speak("What code would you like me to write?")
+            code_description = takecommand()
+            
+            if not code_description or len(code_description.strip()) < 3:
+                speak("Code description not recognized")
+                return False
+        
+        speak(f"Generating code for: {code_description}")
+        print(f"\nAttempting to generate code for: {code_description}")
+        print("Sending request to Gemini API...")
+        
+        # Try different model names in order (updated for 2025)
+        model_names = [
+            'gemini-2.0-flash-exp',      # Latest experimental model
+            'gemini-1.5-flash-002',       # Stable flash model
+            'gemini-1.5-pro-002',         # Stable pro model
+            'gemini-1.0-pro',             # Fallback legacy model
+        ]
+        
+        generated_code = None
+        successful_model = None
+        last_error = None
+        
+        for model_name in model_names:
+            try:
+                print(f"Trying model: {model_name}")
+                model = genai.GenerativeModel(model_name)
+                
+                prompt = f"""Write clean, well-commented code for: {code_description}
+
+Requirements:
+- Include helpful comments explaining the logic
+- Follow best practices and conventions
+- Add basic error handling where appropriate
+- Make the code production-ready and functional
+
+Return ONLY the code without any explanations or markdown formatting."""
+                
+                response = model.generate_content(prompt)
+                
+                if response and response.text:
+                    generated_code = response.text.strip()
+                    successful_model = model_name
+                    print(f"✓ Successfully generated code using {model_name}")
+                    break
+                    
+            except Exception as e:
+                error_msg = str(e)
+                last_error = error_msg
+                print(f"✗ Failed with {model_name}: {error_msg[:150]}")
+                
+                # Extract error type for better debugging
+                if "404" in error_msg:
+                    print(f"  Error type: NotFound")
+                elif "429" in error_msg:
+                    print(f"  Error type: RateLimitExceeded")
+                elif "403" in error_msg:
+                    print(f"  Error type: PermissionDenied")
+                
+                continue
+        
+        if not generated_code:
+            print(f"AI generation failed: All AI models failed")
+            speak("AI generation failed. Creating a template file instead")
+            
+            # Create template based on description
+            desc_lower = code_description.lower()
+            
+            if 'python' in desc_lower or 'calculator' in desc_lower or 'script' in desc_lower:
+                generated_code = f'''# {code_description}
+# Generated by IRA - Template
+# Created: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+def main():
+    """
+    TODO: Implement {code_description}
+    """
+    print("Hello from {code_description}")
+    # Add your implementation here
+    pass
+
+if __name__ == "__main__":
+    main()
+'''
+            elif 'html' in desc_lower or 'webpage' in desc_lower or 'website' in desc_lower:
+                generated_code = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{code_description}</title>
+    <style>
+        body {{
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 20px;
+        }}
+    </style>
+</head>
+<body>
+    <h1>{code_description}</h1>
+    <p>TODO: Add your content here</p>
+    
+    <script>
+        // Add your JavaScript here
+        console.log('Page loaded');
+    </script>
+</body>
+</html>'''
+            else:
+                generated_code = f'''// {code_description}
+// Generated by IRA - Template
+// Created: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+function main() {{
+    // TODO: Implement {code_description}
+    console.log("Hello from {code_description}");
+}}
+
+main();
+'''
+        else:
+            # Clean markdown formatting from AI response
+            generated_code = generated_code.replace('```python', '').replace('```javascript', '')
+            generated_code = generated_code.replace('```java', '').replace('```html', '')
+            generated_code = generated_code.replace('```css', '').replace('```', '').strip()
+        
+        # Determine file extension
+        ext = 'py'
+        desc_lower = code_description.lower()
+        
+        if 'javascript' in desc_lower or 'js' in desc_lower or 'node' in desc_lower:
+            ext = 'js'
+        elif 'java' in desc_lower and 'javascript' not in desc_lower:
+            ext = 'java'
+        elif 'html' in desc_lower or 'webpage' in desc_lower or 'website' in desc_lower:
+            ext = 'html'
+        elif 'css' in desc_lower or 'style' in desc_lower:
+            ext = 'css'
+        elif 'c++' in desc_lower or 'cpp' in desc_lower:
+            ext = 'cpp'
+        elif 'c#' in desc_lower or 'csharp' in desc_lower:
+            ext = 'cs'
+        
+        # Create code directory
+        code_dir = Path.home() / "Documents" / "IRA_Code_Files"
+        code_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate filename
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_name = "".join(c if c.isalnum() or c in ('_', '-') else '_' 
+                          for c in code_description[:40]).strip('_')
+        filename = code_dir / f"{safe_name}_{timestamp}.{ext}"
+        
+        # Write file
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(generated_code)
+        
+        print(f"✓ File saved: {filename}")
+        speak("Code file created successfully")
+        
+        # Open VS Code
+        time.sleep(0.5)
+        
+        try:
+            system_os = platform.system()
+            
+            if system_os == "Windows":
+                # Try multiple methods to open VS Code
+                try:
+                    # Method 1: Direct code command
+                    result = subprocess.run(
+                        ["code", str(filename)], 
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    
+                    if result.returncode == 0:
+                        speak("Opening in Visual Studio Code")
+                        time.sleep(2)
+                        return True
+                    else:
+                        raise Exception("code command returned non-zero")
+                        
+                except (FileNotFoundError, Exception) as e:
+                    print(f"VS Code command failed: {e}")
+                    
+                    # Method 2: Try common VS Code installation paths
+                    vscode_paths = [
+                        r"C:\Users\{}\AppData\Local\Programs\Microsoft VS Code\Code.exe".format(os.getenv('USERNAME')),
+                        r"C:\Program Files\Microsoft VS Code\Code.exe",
+                        r"C:\Program Files (x86)\Microsoft VS Code\Code.exe",
+                    ]
+                    
+                    for vscode_path in vscode_paths:
+                        if os.path.exists(vscode_path):
+                            subprocess.Popen([vscode_path, str(filename)])
+                            speak("Opening in Visual Studio Code")
+                            time.sleep(2)
+                            return True
+                    
+                    # Method 3: Fallback to notepad
+                    print("VS Code not found. Opening in Notepad...")
+                    speak("Visual Studio Code not found. Opening in Notepad instead")
+                    subprocess.Popen(["notepad.exe", str(filename)])
+                    time.sleep(1)
+                    return True
+                    
+            elif system_os == "Darwin":  # macOS
+                subprocess.run(["open", "-a", "Visual Studio Code", str(filename)], timeout=5)
+                speak("Opening in Visual Studio Code")
+                
+            elif system_os == "Linux":
+                subprocess.run(["code", str(filename)], timeout=5)
+                speak("Opening in Visual Studio Code")
+            
+            time.sleep(2)
+            return True
+            
+        except Exception as open_error:
+            print(f"Error opening file: {open_error}")
+            speak("File created successfully. Please open it manually from your Documents folder")
+            
+            # Try to open folder instead
+            try:
+                if system_os == "Windows":
+                    os.startfile(str(code_dir))
+                elif system_os == "Darwin":
+                    subprocess.run(["open", str(code_dir)])
+                elif system_os == "Linux":
+                    subprocess.run(["xdg-open", str(code_dir)])
+            except:
+                pass
+            
+            return True
+        
+    except Exception as e:
+        print(f"Function error: {e}")
+        import traceback
+        traceback.print_exc()
+        speak("Sorry, I encountered an error while generating the code")
+        return False
+
+
+def open_file_in_vscode(file_path):
+    """
+    Open a specific file in VS Code
+    """
+    try:
+        # Normalize the path
+        file_path = file_path.strip()
+        file_path = file_path.replace(" slash ", "/").replace(" backslash ", "\\")
+        file_path = file_path.replace("see colon", "C:").replace("c colon", "C:")
+        file_path = file_path.replace("d colon", "D:").replace("dee colon", "D:")
+        
+        # Expand user path and make absolute
+        file_path = os.path.expanduser(file_path)
+        file_path = os.path.abspath(file_path)
+        
+        # Check if file exists
+        if not os.path.exists(file_path):
+            speak("The specified file does not exist. Please check the path.")
+            print(f"File not found: {file_path}")
+            return False
+        
+        speak("Opening file in Visual Studio Code")
+        
+        system_os = platform.system()
+        
+        if system_os == "Windows":
+            try:
+                # Try code command first
+                subprocess.Popen(["code", file_path])
+                time.sleep(2)
+                speak("File opened successfully")
+                return True
+            except FileNotFoundError:
+                # Fallback to default application
+                speak("VS Code not found. Opening with default application")
+                os.startfile(file_path)
+                time.sleep(1)
+                return True
+                
+        elif system_os == "Darwin":
+            subprocess.Popen(["open", "-a", "Visual Studio Code", file_path])
+            
+        elif system_os == "Linux":
+            subprocess.Popen(["code", file_path])
+        
+        time.sleep(2)
+        speak("File opened successfully")
+        return True
+        
+    except Exception as e:
+        print(f"Open file error: {e}")
+        speak("Sorry, I could not open the file")
+        return False
+
+
+def save_current_code_from_vscode(filename=None):
+    """
+    Save the current VS Code file with a specific name using keyboard automation
+    """
+    try:
+        import pyautogui
+        
+        if not filename:
+            speak("What should be the filename?")
+            filename = takecommand()
+        
+        if filename:
+            # Ctrl+Shift+S (Save As)
+            pyautogui.hotkey('ctrl', 'shift', 's')
+            time.sleep(1.5)
+            
+            # Clear any existing text
+            pyautogui.hotkey('ctrl', 'a')
+            time.sleep(0.3)
+            
+            # Type filename
+            pyautogui.write(filename, interval=0.05)
+            time.sleep(0.5)
+            
+            # Press Enter to save
+            pyautogui.press('enter')
+            time.sleep(0.5)
+            
+            speak(f"File saved as {filename}")
+            return True
+        else:
+            speak("Filename not recognized")
+            return False
+            
+    except Exception as e:
+        print(f"Save file error: {e}")
+        speak("Sorry, I could not save the file")
+        return False
+
+
+
+
+# News API Configuration (Optional)
+NEWS_API_KEY = "20af6c9482b74c778676063604441009"  # Get from https://newsapi.org/register
+NEWS_API_BASE_URL = "https://newsapi.org/v2/"
+def get_news_hindi_from_rss(language="hindi"):
+    """
+    Fetch news using RSS feeds - Supports Hindi and English
+    """
+    try:
+        import feedparser
+        
+        if language == "hindi":
+            speak("हिंदी समाचार लाया जा रहा है")
+            print("Fetching Hindi news from RSS feeds...")
+            
+            # Updated Hindi news RSS feeds with working URLs
+            rss_feeds = {
+                "आज तक": "https://www.aajtak.in/rss/top-stories",
+                "BBC हिंदी": "https://feeds.bbci.co.uk/hindi/rss.xml",
+                "न्यूज़18": "https://hindi.news18.com/rss/india.xml",
+                "वन इंडिया": "https://hindi.oneindia.com/rss/news-fb.xml",
+            }
+        else:
+            speak("Fetching latest news headlines")
+            print("Fetching English news from RSS feeds...")
+            
+            # English news RSS feeds
+            rss_feeds = {
+                "BBC": "http://feeds.bbci.co.uk/news/rss.xml",
+                "The Hindu": "https://www.thehindu.com/news/national/feeder/default.rss",
+                "India Today": "https://www.indiatoday.in/rss/home",
+                "NDTV": "https://feeds.feedburner.com/ndtvnews-top-stories",
+            }
+        
+        all_articles = []
+        
+        for source_name, feed_url in rss_feeds.items():
+            try:
+                print(f"Fetching from {source_name}...")
+                # Add timeout and user agent to avoid blocks
+                feed = feedparser.parse(feed_url, 
+                                       request_headers={'User-Agent': 'Mozilla/5.0'})
+                
+                # Check if feed was fetched successfully
+                if feed.entries:
+                    for entry in feed.entries[:3]:  # Get top 3 from each source
+                        all_articles.append({
+                            "source": source_name,
+                            "title": entry.get("title", "No title"),
+                            "summary": entry.get("summary", "")[:150]
+                        })
+                    print(f"✓ Got {len(feed.entries[:3])} articles from {source_name}")
+                else:
+                    print(f"⚠ No articles from {source_name}")
+                    
+            except Exception as e:
+                print(f"✗ Error fetching from {source_name}: {e}")
+                continue
+        
+        if all_articles:
+            if language == "hindi":
+                speak(f"यहां {len(all_articles)} मुख्य समाचार हैं:")
+            else:
+                speak(f"Here are the latest {len(all_articles)} headlines:")
+            
+            for i, article in enumerate(all_articles, 1):
+                headline = f"{article['title']}"
+                print(f"{i}. [{article['source']}] {headline}")
+                
+                # Speak in appropriate language
+                if language == "hindi":
+                    speak(f"समाचार {i}, {article['source']} से: {headline}", language="hindi")
+                else:
+                    speak(f"Headline {i} from {article['source']}: {headline}")
+                time.sleep(1)
+            
+            return True
+        else:
+            if language == "hindi":
+                speak("समाचार प्राप्त नहीं हो सका। कृपया अपना इंटरनेट कनेक्शन जांचें")
+            else:
+                speak("Could not fetch news. Please check your internet connection")
+            return False
+            
+    except ImportError:
+        print("\n⚠️ feedparser not installed")
+        if language == "hindi":
+            speak("कृपया feedparser लाइब्रेरी इंस्टॉल करें। कमांड प्रॉम्प्ट में टाइप करें: pip install feedparser")
+        else:
+            speak("Please install feedparser library. Type in command prompt: pip install feedparser")
+        return False
+    except Exception as e:
+        print(f"RSS feed error: {e}")
+        import traceback
+        traceback.print_exc()
+        if language == "hindi":
+            speak("समाचार प्राप्त करने में त्रुटि हुई। इंटरनेट कनेक्शन जांचें")
+        else:
+            speak("Error fetching news. Please check your internet connection")
+        return False
+def get_news_from_rss():
+    """
+    Fetch news using RSS feeds - NO API KEY REQUIRED
+    This will always work without any configuration
+    """
+    try:
+        import feedparser
+        
+        speak("Fetching latest news headlines")
+        print("Fetching news from RSS feeds...")
+        
+        # Popular Indian news RSS feeds
+        rss_feeds = {
+            "NDTV": "https://feeds.feedburner.com/ndtvnews-top-stories",
+            "The Hindu": "https://www.thehindu.com/news/national/feeder/default.rss",
+            "India Today": "https://www.indiatoday.in/rss/home",
+        }
+        
+        all_articles = []
+        
+        for source_name, feed_url in rss_feeds.items():
+            try:
+                print(f"Fetching from {source_name}...")
+                feed = feedparser.parse(feed_url)
+                
+                for entry in feed.entries[:3]:  # Get top 3 from each source
+                    all_articles.append({
+                        "source": source_name,
+                        "title": entry.get("title", "No title"),
+                        "summary": entry.get("summary", "")[:150]  # First 150 chars
+                    })
+            except Exception as e:
+                print(f"Error fetching from {source_name}: {e}")
+                continue
+        
+        if all_articles:
+            speak(f"Here are the latest {len(all_articles)} headlines:")
+            
+            for i, article in enumerate(all_articles, 1):
+                headline = f"{article['title']}"
+                print(f"{i}. [{article['source']}] {headline}")
+                speak(f"Headline {i} from {article['source']}: {headline}")
+                time.sleep(1)
+            
+            return True
+        else:
+            speak("Could not fetch news from RSS feeds. Please check your internet connection")
+            return False
+            
+    except ImportError:
+        print("\n⚠️ feedparser not installed")
+        speak("Please install feedparser library. Open command prompt and type: pip install feedparser")
+        return False
+    except Exception as e:
+        print(f"RSS feed error: {e}")
+        speak("Could not fetch news. Please check your internet connection")
+        return False
+
+
+def get_news_from_api(category="general", country="in", max_articles=5):
+    """
+    Fetch news using NewsAPI.org - REQUIRES API KEY
+    Categories: business, entertainment, general, health, science, sports, technology
+    """
+    try:
+        # Check if API key is configured
+        if not NEWS_API_KEY or NEWS_API_KEY == "YOUR_NEWS_API_KEY_HERE":
+            print("⚠️ NewsAPI key not configured, falling back to RSS feeds")
+            return get_news_from_rss()
+        
+        speak(f"Fetching latest {category} news")
+        print(f"Fetching {category} news from NewsAPI...")
+        
+        url = f"{NEWS_API_BASE_URL}top-headlines"
+        params = {
+            "country": country,
+            "category": category,
+            "apiKey": NEWS_API_KEY,
+            "pageSize": max_articles
+        }
+        
+        response = requests.get(url, params=params, timeout=15)
+        
+        if response.status_code == 200:
+            data = response.json()
+            articles = data.get("articles", [])
+            
+            if articles:
+                speak(f"Here are the top {len(articles)} {category} headlines:")
+                
+                for i, article in enumerate(articles, 1):
+                    title = article.get("title", "No title")
+                    source = article.get("source", {}).get("name", "Unknown")
+                    
+                    print(f"{i}. [{source}] {title}")
+                    speak(f"Headline {i}: {title}")
+                    time.sleep(1)
+                
+                return True
+            else:
+                print(f"No articles found for category: {category}")
+                speak(f"No {category} news found. Let me try general news instead")
+                return get_news_from_rss()
+        
+        elif response.status_code == 401:
+            print("❌ Invalid API key")
+            speak("News API key is invalid. Switching to RSS feeds")
+            return get_news_from_rss()
+        
+        elif response.status_code == 426:
+            print("❌ API key requires upgrade")
+            speak("News API requires upgrade. Using free RSS feeds instead")
+            return get_news_from_rss()
+        
+        elif response.status_code == 429:
+            print("❌ API rate limit exceeded")
+            speak("News API limit reached. Using RSS feeds instead")
+            return get_news_from_rss()
+        
+        else:
+            print(f"API returned status code: {response.status_code}")
+            speak("News API unavailable. Using RSS feeds instead")
+            return get_news_from_rss()
+            
+    except requests.Timeout:
+        print("⚠️ Request timed out")
+        speak("Request timed out. Trying RSS feeds")
+        return get_news_from_rss()
+    except Exception as e:
+        print(f"NewsAPI error: {e}")
+        speak("News API error. Using RSS feeds instead")
+        return get_news_from_rss()
+
+
+def get_news_gnews_free():
+    """
+    Alternative free news source using web scraping techniques
+    No API key needed
+    """
+    try:
+        speak("Fetching latest news")
+        
+        # Using a public news aggregator
+        url = "https://newsapi.org/v2/top-headlines?country=in&apiKey=demo"
+        
+        # Note: The demo key has very limited access
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code != 200:
+            return get_news_from_rss()
+        
+        return True
+        
+    except Exception as e:
+        print(f"Free news fetch error: {e}")
+        return get_news_from_rss()
+
+
+def search_news(query, max_articles=5):
+    """
+    Search for specific news topics
+    """
+    try:
+        if not NEWS_API_KEY or NEWS_API_KEY == "YOUR_NEWS_API_KEY_HERE":
+            speak(f"Searching for {query} in RSS feeds")
+            return search_news_rss(query)
+        
+        speak(f"Searching news about {query}")
+        
+        url = f"{NEWS_API_BASE_URL}everything"
+        params = {
+            "q": query,
+            "language": "en",
+            "sortBy": "publishedAt",
+            "apiKey": NEWS_API_KEY,
+            "pageSize": max_articles
+        }
+        
+        response = requests.get(url, params=params, timeout=15)
+        
+        if response.status_code == 200:
+            data = response.json()
+            articles = data.get("articles", [])
+            
+            if articles:
+                speak(f"Found {len(articles)} articles about {query}:")
+                
+                for i, article in enumerate(articles, 1):
+                    title = article.get("title", "No title")
+                    source = article.get("source", {}).get("name", "Unknown")
+                    
+                    print(f"{i}. [{source}] {title}")
+                    speak(f"Article {i}: {title}")
+                    time.sleep(1)
+                
+                return True
+            else:
+                speak(f"No articles found about {query}")
+                return False
+        else:
+            return search_news_rss(query)
+            
+    except Exception as e:
+        print(f"News search error: {e}")
+        return search_news_rss(query)
+
+
+def search_news_rss(query):
+    """
+    Search news in RSS feeds (basic filtering)
+    """
+    try:
+        import feedparser
+        
+        speak(f"Searching for {query} in news feeds")
+        
+        feeds = [
+            "https://feeds.feedburner.com/ndtvnews-top-stories",
+            "https://www.thehindu.com/news/national/feeder/default.rss",
+        ]
+        
+        matching_articles = []
+        query_lower = query.lower()
+        
+        for feed_url in feeds:
+            try:
+                feed = feedparser.parse(feed_url)
+                for entry in feed.entries:
+                    title = entry.get("title", "").lower()
+                    if query_lower in title:
+                        matching_articles.append(entry.get("title", ""))
+            except:
+                continue
+        
+        if matching_articles:
+            speak(f"Found {len(matching_articles)} articles about {query}")
+            for i, title in enumerate(matching_articles[:5], 1):
+                speak(f"Article {i}: {title}")
+                time.sleep(1)
+            return True
+        else:
+            speak(f"No articles found about {query}")
+            return False
+            
+    except ImportError:
+        speak("Cannot search news. Please install feedparser")
+        return False
+    except Exception as e:
+        print(f"RSS search error: {e}")
+        return False
+
+
+def get_current_affairs():
+    """
+    Main function - automatically chooses best method
+    ALWAYS WORKS - uses RSS feeds as reliable fallback
+    """
+    try:
+        # Try API first if configured
+        if NEWS_API_KEY and NEWS_API_KEY != "YOUR_NEWS_API_KEY_HERE":
+            print("Trying NewsAPI...")
+            return get_news_from_api(category="general", country="in")
+        else:
+            # Use RSS feeds (always works)
+            print("Using RSS feeds (no API key configured)...")
+            return get_news_from_rss()
+            
+    except Exception as e:
+        print(f"Current affairs error: {e}")
+        # Last resort - always try RSS
+        return get_news_from_rss()
+
+
+def get_business_news():
+    """Get business news"""
+    return get_news_from_api(category="business", country="in")
+
+
+def get_sports_news():
+    """Get sports news"""
+    return get_news_from_api(category="sports", country="in")
+
+
+def get_tech_news():
+    """Get technology news"""
+    return get_news_from_api(category="technology", country="in")
+
+
+def get_entertainment_news():
+    """Get entertainment news"""
+    return get_news_from_api(category="entertainment", country="in")
+
 
 @eel.expose
 def allCommands(message=1):
@@ -1574,29 +2553,94 @@ def allCommands(message=1):
         
         elif "tell me about yourself" in query or "introduce yourself" in query:
             speak("Hello! I am IRA, an intelligent voice assistant created by Ankita, Anjali, Shubham and Amrita. I can help you with many tasks like checking weather, managing files, controlling your system, and much more. Just ask me anything!")
-        elif "what is unique" in query or "what makes you different" in query or "what makes you special" in query or "your uniqueness" in query or "why choose you" in query:
-            speak("What makes me unique is my multilingual capability. I can speak and understand over 27 languages including English, Hindi, Spanish, French, German, Tamil, Telugu, Bengali, Arabic, Chinese, Japanese, Korean, and many more. "
-                  "You can seamlessly switch between languages anytime. I also offer comprehensive system control, including Wi-Fi management, disk usage monitoring, battery status, volume control, screenshot capture, and even reveal Wi-Fi passwords. "
-                  "Plus, I have built-in task management, reminders, note-taking, Wikipedia search, weather updates, and internet speed testing. "
-                  "I'm designed to be your complete personal assistant with the power of multiple languages at your command.")
-        elif "read pdf" in query:
-            speak("Which file should I read?")
-            file_name = takecommand()
-            if file_name:
-              try:
-                read_pdf_file(file_name)
-              except Exception:
-                speak("I could not open that PDF file.")
 
-        elif "read text" in query or "read note" in query:
-          speak("Which text file should I read?")
-          file_name = takecommand()
-          if file_name:
-             try:
-               read_text_file(file_name)
-             except Exception:
-               speak("I could not open that text file.")
+        elif "what is unique" in query or "what makes you different" in query or "what makes you special" in query or "your uniqueness" in query or "why choose you" in query or "your specialty" in query:
+         
+           # Speak in smaller chunks for better clarity
+            speak("Let me tell you what makes me truly special and different from other assistants.")
+            time.sleep(0.2)
+    
+            speak("First, I am truly multilingual. I speak over 27 languages including English, Hindi, Spanish, French, German, Tamil, Telugu, Bengali, Arabic, Chinese, Japanese, Korean, and many more. You can switch between any language anytime.")
+            time.sleep(0.2)
+    
+            speak("I offer comprehensive system control. I manage Wi-Fi, reveal passwords, monitor disk usage, check CPU and RAM, control brightness and volume, capture screenshots, and safely control your PC operations.")
+            time.sleep(0.2)
+    
+            speak("My file management is exceptional. I read text, PDF, and Word documents in English and Hindi. Just say the file name - I'll find it automatically in your common folders.")
+            time.sleep(0.2)
+    
+            speak("I have artificial intelligence for creative tasks. I generate images from descriptions, create professional PowerPoint presentations with custom themes, and write complete code in multiple programming languages.")
+            time.sleep(0.2)
+    
+            speak("I keep you updated with latest news in English and Hindi from reliable sources. I search specific topics and provide business, sports, technology, and entertainment updates.")
+            time.sleep(0.2)
+    
+            speak("I offer practical utilities like weather forecasts, Wikipedia searches, internet speed tests, battery monitoring, and system diagnostics. I also manage tasks, set reminders, and take notes.")
+            time.sleep(0.2)
+    
+            speak("What truly sets me apart is my voice-first design in your preferred language. Just say IRA and I start listening. I translate between languages and adapt to you automatically.")
+            time.sleep(0.2)
+    
+            speak("I was created by Ankita, Anjali, Shubham, and Amrita to make technology accessible to everyone. I'm your personal productivity partner, system administrator, creative collaborator, and information companion, all in one, speaking your language.")
+        elif "read file" in query or "read text" in query or "फ़ाइल पढ़ो" in query:
+            speak("What is the file name?")
+            filename = takecommand()
+    
+            if filename:
+               speak("Should I read in English or Hindi?")
+               lang_choice = takecommand()
+        
+               lang = "hindi" if "hindi" in lang_choice or "हिंदी" in lang_choice else "english"
+               read_text_file_smart(filename, language=lang)
+            else:
+               speak("File name not recognized")
 
+        elif "read pdf" in query or "पीडीएफ पढ़ो" in query:
+            speak("What is the PDF file name?")
+            filename = takecommand()
+    
+            if filename:
+              speak("Should I read in English or Hindi?")
+              lang_choice = takecommand()
+        
+              lang = "hindi" if "hindi" in lang_choice or "हिंदी" in lang_choice else "english"
+        
+              speak("Should I read all pages or specific pages?")
+              page_choice = takecommand()
+        
+              if "specific" in page_choice:
+                speak("From which page?")
+                start_text = takecommand()
+                try:
+                  start_page = int(''.join(filter(str.isdigit, start_text))) - 1
+                except:
+                  start_page = 0
+            
+                speak("To which page?")
+                end_text = takecommand()
+                try:
+                  end_page = int(''.join(filter(str.isdigit, end_text)))
+                except:
+                  end_page = None
+            
+                read_pdf_file_smart(filename, start_page, end_page, language=lang)
+              else:
+                 read_pdf_file_smart(filename, language=lang)
+            else:
+              speak("File name not recognized")
+
+        elif "read word" in query or "read document" in query or "वर्ड पढ़ो" in query:
+             speak("What is the Word document name?")
+             filename = takecommand()
+    
+             if filename:
+               speak("Should I read in English or Hindi?")
+               lang_choice = takecommand()
+        
+               lang = "hindi" if "hindi" in lang_choice or "हिंदी" in lang_choice else "english"
+               read_word_document_smart(filename, language=lang)
+             else:
+               speak("File name not recognized")
         elif "generate image" in query or "create image" in query or "draw image" in query or "make image" in query:
             speak("What image would you like me to generate? Please describe it in detail.")
             image_prompt = takecommand()
@@ -1669,6 +2713,50 @@ def allCommands(message=1):
                 create_ppt_from_topic(topic, num_slides=7, design_theme="professional")
             else:
                 speak("Please specify the topic")
+        # Add these elif conditions in the allCommands() function:
+
+        elif "write code" in query and ("vs code" in query or "visual studio" in query):
+            speak("What code would you like me to write?")
+            code_description = takecommand()
+            
+            if code_description:
+                write_code_in_vscode(code_description)
+            else:
+                speak("Code description not recognized")
+        
+        elif "open vs code" in query or "launch vs code" in query or "start vs code" in query:
+            write_code_in_vscode()
+        
+        elif "save code" in query or "save file" in query:
+            save_current_code_from_vscode()
+        elif "hindi news" in query or "हिंदी समाचार" in query or "hindi mein news" in query:
+          get_news_hindi_from_rss(language="hindi")
+    
+        elif "news in hindi" in query or "समाचार सुनाओ" in query:
+           get_news_hindi_from_rss(language="hindi")
+        elif "news" in query or "current affairs" in query or "headlines" in query:
+           if "business" in query:
+             get_business_news()
+           elif "sports" in query:
+             get_sports_news()
+           elif "technology" in query or "tech" in query:
+             get_tech_news()
+           elif "entertainment" in query:
+             get_entertainment_news()
+           else:
+             get_current_affairs()
+
+        elif "search news" in query or "news about" in query:
+           topic = query.replace("search news", "").replace("news about", "")
+           topic = topic.replace("for", "").strip()
+    
+           if topic:
+            search_news(topic)
+           else:
+            speak("What topic should I search for?")
+            topic = takecommand()
+            if topic:
+              search_news(topic)  
         elif "send message" in query or "phone call" in query or "video call" in query:
            from engine.features import findContact, whatsApp, makeCall, sendMessage
            contact_no, name = findContact(query)

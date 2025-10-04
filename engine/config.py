@@ -1,2 +1,2 @@
 ASSISTANT_NAME = "ira"
-LLM_KEY = "AIzaSyDmghjBadzOO8asDXtsI-EyFWf6Cqq-H00"
+LLM_KEY = "AIzaSyDMD0DEjXE6i2WHwAiyyHKWr0de-L2kKJ8"

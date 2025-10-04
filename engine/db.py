@@ -139,7 +139,7 @@ for site in websites:
 
 # Save & Close
 con.commit()
-con.close()
+
 
 print("✅ Database initialized successfully with apps and websites.")
 
@@ -179,9 +179,9 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS contacts (id integer primary key, n
 # results = cursor.fetchall()
 # print(results[0][0])
 
-# cursor.execute(
-#     "INSERT INTO contacts (name, mobile_no) VALUES (?, ?)",
-#     ("pawan", "1234567890")
-# )
-# con.commit()
-
+cursor.execute(
+    "INSERT INTO contacts (name, mobile_no) VALUES (?, ?)",
+    ("ds", "9451660562")
+)
+con.commit()
+con.close()
