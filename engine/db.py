@@ -55,3 +55,10 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS contacts (id integer primary key, n
 # cursor.execute("SELECT mobile_no FROM contacts WHERE LOWER(name) LIKE ? OR LOWER(name) LIKE ?", ('%' + query + '%', query + '%'))
 # results = cursor.fetchall()
 # print(results[0][0])
+
+# cursor.execute(
+#     "INSERT INTO contacts (name, mobile_no) VALUES (?, ?)",
+#     ("pawan", "1234567890")
+# )
+# con.commit()
+
