@@ -117,7 +117,7 @@ def speak(text, language=None, slow=False):
     except Exception as e:
         print(f"Speech error: {e}")
 
-
+    
 def translate_text(text, target_lang):
     """Translate text to target language"""
     try:

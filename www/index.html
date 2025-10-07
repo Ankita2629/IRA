@@ -341,24 +341,45 @@
                 <div class="col-md-1"></div>
             </div>
         </section>
-        <section id="SiriWave" class="mb-4" hidden>
-
-            <div class="container">
-                <div class="row">
-                    <div class="col-md-12">
-                        <div class="d-flex justify-content-center align-items-center" style="height: 100vh;">
-                            <div class="">
-                                <p class="text-start text-light mb-4 siri-message" style="font-size: 18px;">Hello, I a IRA</p>
-                                <div id="siri-container"></div>
-                            </div>
-
-                        </div>
+<section id="SiriWave" class="mb-4" hidden>
+    <div class="container">
+        <div class="row">
+            <div class="col-md-12">
+                <div class="d-flex justify-content-center align-items-center" style="height: 100vh;">
+                    <div class="text-center">
+                        <p class="text-start text-light mb-4 siri-message" style="font-size: 18px;">Hello, I am IRA</p>
+                        <div id="siri-container"></div>
+                        
+                        <!-- Stop Button -->
+                        <button id="stopSpeaking" class="btn btn-danger mt-4" style="padding: 12px 30px; font-size: 16px; border-radius: 25px;">
+                            <i class="fas fa-stop-circle me-2"></i> Stop Speaking
+                        </button>
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+</section>
 
-        </section>
-
+<script>
+// Stop speaking functionality
+document.getElementById('stopSpeaking').addEventListener('click', function() {
+    // Call Python function to stop audio
+    eel.stop_speaking();
+    
+    // Visual feedback
+    this.innerHTML = '<i class="fas fa-check-circle me-2"></i> Stopped';
+    this.classList.remove('btn-danger');
+    this.classList.add('btn-success');
+    
+    // Reset button after 2 seconds
+    setTimeout(() => {
+        this.innerHTML = '<i class="fas fa-stop-circle me-2"></i> Stop Speaking';
+        this.classList.remove('btn-success');
+        this.classList.add('btn-danger');
+    }, 2000);
+});
+</script>
 
     </div>
 
