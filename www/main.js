@@ -23,7 +23,7 @@ $(document).ready(function () {
         amplitude: "1",
         speed: "0.30",
         autostart: true
-      });
+    });
 
     // Siri message animation
     $('.siri-message').textillate({
@@ -41,7 +41,6 @@ $(document).ready(function () {
     });
 
     // mic button click event
-
     $("#MicBtn").click(function () { 
         eel.playAssistantSound()
         $("#Oval").attr("hidden", true);
@@ -49,10 +48,8 @@ $(document).ready(function () {
         eel.allCommands()()
     });
 
-
     function doc_keyUp(e) {
         // this would test for whichever key is 40 (down arrow) and the ctrl key at the same time
-
         if (e.key === 'j' && e.metaKey) {
             eel.playAssistantSound()
             $("#Oval").attr("hidden", true);
@@ -62,23 +59,19 @@ $(document).ready(function () {
     }
     document.addEventListener('keyup', doc_keyUp, false);
 
-    // to play assisatnt 
+    // to play assistant 
     function PlayAssistant(message) {
-
         if (message != "") {
-
             $("#Oval").attr("hidden", true);
             $("#SiriWave").attr("hidden", false);
             eel.allCommands(message);
             $("#chatbox").val("")
             $("#MicBtn").attr('hidden', false);
             $("#SendBtn").attr('hidden', true);
-
         }
-
     }
 
-    // toogle fucntion to hide and display mic and send button 
+    // toggle function to hide and display mic and send button 
     function ShowHideButton(message) {
         if (message.length == 0) {
             $("#MicBtn").attr('hidden', false);
@@ -92,21 +85,16 @@ $(document).ready(function () {
 
     // key up event handler on text box
     $("#chatbox").keyup(function () {
-
         let message = $("#chatbox").val();
         ShowHideButton(message)
-    
     });
     
     // send button event handler
     $("#SendBtn").click(function () {
-    
         let message = $("#chatbox").val()
         PlayAssistant(message)
-    
     });
     
-
     // enter press event handler on chat box
     $("#chatbox").keypress(function (e) {
         key = e.which;
@@ -115,8 +103,5 @@ $(document).ready(function () {
             PlayAssistant(message)
         }
     });
-
-
-
 
 });

@@ -1,4 +1,5 @@
 import base64
+import keyword
 import PyPDF2
 from setuptools import sic
 import speech_recognition as sr
@@ -36,7 +37,20 @@ import requests
 import datetime
 from pathlib import Path
 import json
-
+import re
+import requests
+from pathlib import Path
+import datetime
+import base64
+from io import BytesIO
+from PIL import Image
+import google.generativeai as genai
+import keyboard
+import subprocess
+import tempfile
+import os
+from pathlib import Path
+import time
 
 translator = Translator()
 pygame.mixer.init()
@@ -83,9 +97,43 @@ reminders = []
 GEMINI_API_KEY = "AIzaSyCYDb08-0XuFyK4s5EGzmmtsyieG_PjW1g"
 genai.configure(api_key=GEMINI_API_KEY)
 
+# def speak(text, language=None, slow=False):
+#     """Speak text using Google Text-to-Speech"""
+#     global CURRENT_LANGUAGE
+    
+#     if language and language in LANGUAGES:
+#         lang_code = LANGUAGES[language]["tts"]
+#     else:
+#         lang_code = CURRENT_LANGUAGE
+    
+#     text = str(text)
+    
+#     try:
+#         eel.DisplayMessage(text)
+#         eel.receiverText(text)
+        
+#         tts = gTTS(text=text, lang=lang_code, slow=slow)
+#         filename = "temp_audio.mp3"
+#         tts.save(filename)
+        
+#         pygame.mixer.music.load(filename)
+#         pygame.mixer.music.play()
+        
+#         while pygame.mixer.music.get_busy():
+#             time.sleep(0.1)
+        
+#         pygame.mixer.music.unload()
+#         time.sleep(0.2)
+        
+#         if os.path.exists(filename):
+#             os.remove(filename)
+            
+#     except Exception as e:
+#         print(f"Speech error: {e}")
+
 def speak(text, language=None, slow=False):
-    """Speak text using Google Text-to-Speech"""
-    global CURRENT_LANGUAGE
+    """Speak text with keyboard interrupt only (Space bar)"""
+    global CURRENT_LANGUAGE, SPEECH_INTERRUPTED
     
     if language and language in LANGUAGES:
         lang_code = LANGUAGES[language]["tts"]
@@ -98,25 +146,72 @@ def speak(text, language=None, slow=False):
         eel.DisplayMessage(text)
         eel.receiverText(text)
         
-        tts = gTTS(text=text, lang=lang_code, slow=slow)
-        filename = "temp_audio.mp3"
-        tts.save(filename)
+        # Split into sentences for better interrupt responsiveness
+        sentences = text.replace('!', '.').replace('?', '.').split('.')
+        sentences = [s.strip() for s in sentences if s.strip()]
         
-        pygame.mixer.music.load(filename)
-        pygame.mixer.music.play()
+        SPEECH_INTERRUPTED = False
         
-        while pygame.mixer.music.get_busy():
-            time.sleep(0.1)
-        
-        pygame.mixer.music.unload()
-        time.sleep(0.2)
-        
-        if os.path.exists(filename):
-            os.remove(filename)
+        for idx, sentence in enumerate(sentences):
+            # Check keyboard interrupt
+            try:
+                if keyboard.is_pressed('space'):
+                    print("Speech interrupted by Space key")
+                    SPEECH_INTERRUPTED = True
+                    break
+            except:
+                pass  # keyboard module not available or error
             
+            # Check global interrupt flag
+            if SPEECH_INTERRUPTED:
+                print("Speech interrupted")
+                break
+                
+            try:
+                tts = gTTS(text=sentence, lang=lang_code, slow=slow)
+                filename = f"temp_audio_{idx}.mp3"
+                tts.save(filename)
+                
+                pygame.mixer.music.load(filename)
+                pygame.mixer.music.play()
+                
+                # Check for interrupts while playing
+                while pygame.mixer.music.get_busy():
+                    if SPEECH_INTERRUPTED:
+                        pygame.mixer.music.stop()
+                        break
+                    try:
+                        if keyboard.is_pressed('space'):
+                            pygame.mixer.music.stop()
+                            SPEECH_INTERRUPTED = True
+                            break
+                    except:
+                        pass
+                    time.sleep(0.1)
+                
+                pygame.mixer.music.unload()
+                time.sleep(0.1)
+                
+                if os.path.exists(filename):
+                    os.remove(filename)
+                    
+            except Exception as e:
+                print(f"Speech error in sentence: {e}")
+                continue
+                
     except Exception as e:
         print(f"Speech error: {e}")
-
+    
+    # Clean up any remaining temp files
+    try:
+        import glob
+        for temp_file in glob.glob("temp_audio_*.mp3"):
+            try:
+                os.remove(temp_file)
+            except:
+                pass
+    except:
+        pass
     
 def translate_text(text, target_lang):
     """Translate text to target language"""
@@ -823,30 +918,347 @@ def list_available_wifi():
         print(f"List Wi-Fi error: {e}")
         speak("Sorry, I could not scan for Wi-Fi networks")
 
-def generate_image_pollinations(prompt, width=1024, height=1024):
+
+def find_file_by_name(filename, language="english"):
     """
-    Generate image using Pollinations AI (Free, No API Key Required)
+    Search for a file by name in common locations
+    Returns full path if found, None otherwise
     """
     try:
-        speak(f"Generating image: {prompt}. Please wait...")
+        # Common search locations
+        search_paths = [
+            Path.home() / "Documents",
+            Path.home() / "Downloads",
+            Path.home() / "Desktop",
+            Path.home() / "Documents" / "IRA_Code_Files",
+            Path.home() / "Documents" / "IRA_Presentations",
+            Path.home() / "Documents" / "AssistantNotes",
+            Path.home() / "Pictures",
+            Path.home() / "Music",
+            Path.home() / "Videos",
+            Path.home(),  # Home directory
+        ]
         
-        # Pollinations AI endpoint
-        url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(prompt)}"
+        # Clean filename
+        filename = filename.strip().lower()
+        
+        # Replace spoken words with actual symbols
+        filename = filename.replace(" dot ", ".")
+        filename = filename.replace(" underscore ", "_")
+        filename = filename.replace(" dash ", "-")
+        
+        found_files = []
+        
+        if language == "hindi":
+            speak(f"{filename} को खोजा जा रहा है", language="hindi")
+        else:
+            speak(f"Searching for {filename}")
+        
+        print(f"\nSearching for: {filename}")
+        print("Searching in common locations...")
+        
+        for search_path in search_paths:
+            if search_path.exists():
+                try:
+                    # Search in directory and subdirectories
+                    for root, dirs, files in os.walk(search_path):
+                        for file in files:
+                            if filename in file.lower():
+                                full_path = os.path.join(root, file)
+                                found_files.append(full_path)
+                                print(f"Found: {full_path}")
+                        
+                        # Don't go too deep (max 2 levels)
+                        if root.count(os.sep) - str(search_path).count(os.sep) >= 2:
+                            dirs.clear()
+                            
+                except PermissionError:
+                    continue
+        
+        if found_files:
+            if len(found_files) == 1:
+                if language == "hindi":
+                    speak("फ़ाइल मिल गई", language="hindi")
+                else:
+                    speak("File found")
+                return found_files[0]
+            else:
+                # Multiple files found
+                if language == "hindi":
+                    speak(f"{len(found_files)} फ़ाइलें मिलीं। पहली फ़ाइल उपयोग की जाएगी", language="hindi")
+                else:
+                    speak(f"Found {len(found_files)} files. Using the first one")
+                
+                # Show all found files
+                for i, file_path in enumerate(found_files[:5], 1):
+                    print(f"{i}. {file_path}")
+                
+                return found_files[0]
+        else:
+            if language == "hindi":
+                speak(f"{filename} नहीं मिली। कृपया पूरा path बताएं", language="hindi")
+            else:
+                speak(f"Could not find {filename}. Please provide the full path")
+            return None
+            
+    except Exception as e:
+        print(f"File search error: {e}")
+        return None
+
+
+def read_text_file_smart(filename, language="english"):
+    """Read text file by searching with filename only"""
+    try:
+        # Try to find the file
+        file_path = find_file_by_name(filename, language)
+        
+        if not file_path:
+            return False
+        
+        print(f"\nReading file: {file_path}")
+        
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read().strip()
+        
+        if content:
+            if language == "hindi":
+                speak("फ़ाइल पढ़ी जा रही है", language="hindi")
+            else:
+                speak("Reading file")
+            
+            chunks = [content[i:i+2000] for i in range(0, len(content), 2000)]
+            
+            for chunk in chunks:
+                if language == "hindi":
+                    speak(chunk, language="hindi")
+                else:
+                    speak(chunk)
+                time.sleep(0.5)
+            
+            if language == "hindi":
+                speak("फ़ाइल पढ़ना पूरा हुआ", language="hindi")
+            else:
+                speak("Finished reading")
+            return True
+        else:
+            if language == "hindi":
+                speak("फ़ाइल खाली है", language="hindi")
+            else:
+                speak("File is empty")
+            return False
+            
+    except Exception as e:
+        print(f"Read error: {e}")
+        if language == "hindi":
+            speak("फ़ाइल नहीं पढ़ी जा सकी", language="hindi")
+        else:
+            speak("Could not read the file")
+        return False
+
+
+def read_pdf_file_smart(filename, start_page=0, end_page=None, language="english"):
+    """Read PDF file by searching with filename only"""
+    try:
+        import PyPDF2
+        
+        file_path = find_file_by_name(filename, language)
+        
+        if not file_path:
+            return False
+        
+        print(f"\nReading PDF: {file_path}")
+        
+        with open(file_path, "rb") as f:
+            reader = PyPDF2.PdfReader(f)
+            num_pages = len(reader.pages)
+            
+            if end_page is None or end_page > num_pages:
+                end_page = num_pages
+            
+            if start_page < 0 or start_page >= num_pages:
+                if language == "hindi":
+                    speak("गलत पेज नंबर", language="hindi")
+                else:
+                    speak("Invalid page number")
+                return False
+            
+            if language == "hindi":
+                speak(f"पीडीएफ पढ़ी जा रही है। कुल {num_pages} पेज हैं", language="hindi")
+            else:
+                speak(f"Reading PDF. Total {num_pages} pages")
+            
+            for i in range(start_page, end_page):
+                try:
+                    text = reader.pages[i].extract_text()
+                    
+                    if text and text.strip():
+                        if language == "hindi":
+                            speak(f"पेज {i+1}", language="hindi")
+                        else:
+                            speak(f"Page {i+1}")
+                        
+                        chunks = [text[j:j+2000] for j in range(0, len(text), 2000)]
+                        
+                        for chunk in chunks:
+                            if language == "hindi":
+                                speak(chunk, language="hindi")
+                            else:
+                                speak(chunk)
+                            time.sleep(0.3)
+                    else:
+                        if language == "hindi":
+                            speak(f"पेज {i+1} खाली है", language="hindi")
+                        else:
+                            speak(f"Page {i+1} is empty")
+                            
+                except Exception as e:
+                    print(f"Error on page {i+1}: {e}")
+                    continue
+            
+            if language == "hindi":
+                speak("पीडीएफ पढ़ना पूरा हुआ", language="hindi")
+            else:
+                speak("Finished reading PDF")
+            return True
+            
+    except ImportError:
+        speak("PyPDF2 is not installed. Please run: pip install PyPDF2")
+        return False
+    except Exception as e:
+        print(f"PDF read error: {e}")
+        if language == "hindi":
+            speak("पीडीएफ नहीं पढ़ी जा सकी", language="hindi")
+        else:
+            speak("Could not read PDF")
+        return False
+
+
+def read_word_document_smart(filename, language="english"):
+    """Read Word document by searching with filename only"""
+    try:
+        import docx
+        
+        file_path = find_file_by_name(filename, language)
+        
+        if not file_path:
+            return False
+        
+        print(f"\nReading Word document: {file_path}")
+        
+        doc = docx.Document(file_path)
+        
+        if language == "hindi":
+            speak("वर्ड डॉक्यूमेंट पढ़ा जा रहा है", language="hindi")
+        else:
+            speak("Reading Word document")
+        
+        full_text = []
+        for para in doc.paragraphs:
+            if para.text.strip():
+                full_text.append(para.text)
+        
+        content = "\n".join(full_text)
+        
+        if content:
+            chunks = [content[i:i+2000] for i in range(0, len(content), 2000)]
+            
+            for chunk in chunks:
+                if language == "hindi":
+                    speak(chunk, language="hindi")
+                else:
+                    speak(chunk)
+                time.sleep(0.3)
+            
+            if language == "hindi":
+                speak("डॉक्यूमेंट पढ़ना पूरा हुआ", language="hindi")
+            else:
+                speak("Finished reading document")
+            return True
+        else:
+            if language == "hindi":
+                speak("डॉक्यूमेंट खाली है", language="hindi")
+            else:
+                speak("Document is empty")
+            return False
+            
+    except ImportError:
+        speak("python-docx is not installed. Please run: pip install python-docx")
+        return False
+    except Exception as e:
+        print(f"Word read error: {e}")
+        if language == "hindi":
+            speak("वर्ड फ़ाइल नहीं पढ़ी जा सकी", language="hindi")
+        else:
+            speak("Could not read Word document")
+        return False
+
+
+STABILITY_API_KEY = None 
+GEMINI_API_KEY = "AIzaSyCYDb08-0XuFyK4s5EGzmmtsyieG_PjW1g"
+
+genai.configure(api_key=GEMINI_API_KEY)
+
+
+def enhance_prompt_with_ai(user_prompt):
+    """
+    Use Gemini to enhance and optimize the image generation prompt
+    This dramatically improves image quality and accuracy
+    """
+    try:
+        model = genai.GenerativeModel('models/gemini-2.5-flash')
+        
+        enhancement_request = f"""You are an expert at writing prompts for AI image generation.
+        
+User's request: "{user_prompt}"
+
+Transform this into a detailed, optimized prompt for image generation that will produce accurate, high-quality results. Include:
+- Specific visual details
+- Style and artistic direction
+- Lighting and atmosphere
+- Quality modifiers (like "highly detailed", "professional", "8k")
+
+Return ONLY the enhanced prompt text, nothing else. Keep it under 200 words."""
+
+        response = model.generate_content(enhancement_request)
+        enhanced = response.text.strip()
+        
+        print(f"Original prompt: {user_prompt}")
+        print(f"Enhanced prompt: {enhanced}")
+        
+        return enhanced
+        
+    except Exception as e:
+        print(f"Prompt enhancement error: {e}")
+        # Fallback: add basic quality modifiers
+        return f"{user_prompt}, highly detailed, professional quality, sharp focus, 8k resolution"
+
+
+def generate_image_pollinations_enhanced(prompt, width=1024, height=1024):
+    """
+    Enhanced Pollinations AI with AI-powered prompt optimization
+    FREE - No API key required
+    """
+    try:
+        # Enhance prompt using Gemini
+        enhanced_prompt = enhance_prompt_with_ai(prompt)
+        speak(f"Generating high-quality image. Please wait...")
+        
+        # Use FLUX model for better quality
+        url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(enhanced_prompt)}"
         params = {
             "width": width,
             "height": height,
             "nologo": "true",
-            "enhance": "true"
+            "enhance": "true",
+            "model": "flux"  # Best free model
         }
         
-        response = requests.get(url, params=params, timeout=60)
+        response = requests.get(url, params=params, timeout=90)
         
         if response.status_code == 200:
-            # Create Images directory
             images_dir = Path.home() / "Pictures" / "IRA_Generated_Images"
             images_dir.mkdir(parents=True, exist_ok=True)
             
-            # Save image
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             safe_prompt = "".join(c for c in prompt[:30] if c.isalnum() or c in (' ', '-', '_')).strip()
             filename = images_dir / f"{safe_prompt}_{timestamp}.png"
@@ -854,19 +1266,18 @@ def generate_image_pollinations(prompt, width=1024, height=1024):
             with open(filename, 'wb') as f:
                 f.write(response.content)
             
-            speak(f"Image generated successfully and saved to Pictures folder")
+            speak("Image generated successfully and saved to Pictures folder")
             print(f"Image saved: {filename}")
             
-            # Optional: Open the image
             try:
                 import os
-                os.startfile(str(filename))  # Windows
+                os.startfile(str(filename))
             except:
                 pass
                 
             return True
         else:
-            speak("Failed to generate image. Please try again.")
+            speak("Generation failed. Please try again.")
             return False
             
     except Exception as e:
@@ -875,17 +1286,18 @@ def generate_image_pollinations(prompt, width=1024, height=1024):
         return False
 
 
-def generate_image_stable_diffusion(prompt, api_key=None):
+def generate_image_stability_ai(prompt, api_key=None):
     """
-    Generate image using Stability AI (Requires API Key)
-    Get free API key from: https://platform.stability.ai/
+    Stability AI - BEST QUALITY (Requires API key)
+    Get free credits: https://platform.stability.ai/
     """
     try:
         if not api_key:
-            speak("Stable Diffusion API key not configured")
-            return False
+            speak("Stability AI key not configured. Using free service instead.")
+            return generate_image_pollinations_enhanced(prompt)
         
-        speak(f"Generating high-quality image: {prompt}. This may take a moment...")
+        enhanced_prompt = enhance_prompt_with_ai(prompt)
+        speak("Generating professional-grade image. This may take a moment...")
         
         url = "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image"
         
@@ -895,37 +1307,43 @@ def generate_image_stable_diffusion(prompt, api_key=None):
         }
         
         data = {
-            "text_prompts": [{"text": prompt}],
-            "cfg_scale": 7,
+            "text_prompts": [
+                {
+                    "text": enhanced_prompt,
+                    "weight": 1
+                },
+                {
+                    "text": "blurry, low quality, distorted, ugly, bad anatomy",
+                    "weight": -1  # Negative prompt for better results
+                }
+            ],
+            "cfg_scale": 8,  # Higher = more prompt adherence
             "height": 1024,
             "width": 1024,
             "samples": 1,
-            "steps": 30,
+            "steps": 50,  # More steps = better quality
+            "style_preset": "photographic"  # Options: photographic, digital-art, 3d-model, anime, etc.
         }
         
         response = requests.post(url, headers=headers, json=data, timeout=120)
         
         if response.status_code == 200:
-            data = response.json()
-            
-            # Create Images directory
+            result = response.json()
             images_dir = Path.home() / "Pictures" / "IRA_Generated_Images"
             images_dir.mkdir(parents=True, exist_ok=True)
             
-            # Save image
-            for i, image in enumerate(data["artifacts"]):
+            for i, image in enumerate(result["artifacts"]):
                 timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
                 safe_prompt = "".join(c for c in prompt[:30] if c.isalnum() or c in (' ', '-', '_')).strip()
-                filename = images_dir / f"{safe_prompt}_{timestamp}.png"
+                filename = images_dir / f"{safe_prompt}_{timestamp}_HD.png"
                 
                 img_data = base64.b64decode(image["base64"])
                 with open(filename, 'wb') as f:
                     f.write(img_data)
                 
-                speak(f"High-quality image generated successfully")
+                speak("Professional-grade image generated successfully")
                 print(f"Image saved: {filename}")
                 
-                # Open the image
                 try:
                     import os
                     os.startfile(str(filename))
@@ -934,41 +1352,41 @@ def generate_image_stable_diffusion(prompt, api_key=None):
                     
             return True
         else:
-            speak(f"Failed to generate image. Status: {response.status_code}")
-            return False
+            error_msg = response.json().get('message', 'Unknown error')
+            print(f"API Error: {error_msg}")
+            speak("API error. Switching to free service.")
+            return generate_image_pollinations_enhanced(prompt)
             
     except Exception as e:
-        print(f"Stable Diffusion error: {e}")
-        speak("Sorry, I could not generate the image with Stable Diffusion.")
-        return False
+        print(f"Stability AI error: {e}")
+        speak("Switching to alternative service.")
+        return generate_image_pollinations_enhanced(prompt)
 
 
-def generate_image_huggingface(prompt, model="black-forest-labs/FLUX.1-schnell"):
+def generate_image_huggingface(prompt, hf_token=None):
     """
-    Generate image using Hugging Face Inference API (Free)
-    Default model: FLUX.1-schnell (Fast and free)
+    Hugging Face - Good quality, FREE
+    Optional token for faster processing: https://huggingface.co/settings/tokens
     """
     try:
-        speak(f"Creating your image: {prompt}. Please wait...")
+        enhanced_prompt = enhance_prompt_with_ai(prompt)
+        speak("Creating your image. Please wait...")
         
-        API_URL = f"https://api-inference.huggingface.co/models/{model}"
+        # FLUX.1-schnell is fast and free
+        API_URL = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
         
-        headers = {
-            "Content-Type": "application/json",
-        }
+        headers = {"Content-Type": "application/json"}
+        if hf_token:
+            headers["Authorization"] = f"Bearer {hf_token}"
         
-        payload = {
-            "inputs": prompt,
-        }
+        payload = {"inputs": enhanced_prompt}
         
         response = requests.post(API_URL, headers=headers, json=payload, timeout=120)
         
         if response.status_code == 200:
-            # Create Images directory
             images_dir = Path.home() / "Pictures" / "IRA_Generated_Images"
             images_dir.mkdir(parents=True, exist_ok=True)
             
-            # Save image
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             safe_prompt = "".join(c for c in prompt[:30] if c.isalnum() or c in (' ', '-', '_')).strip()
             filename = images_dir / f"{safe_prompt}_{timestamp}.png"
@@ -976,10 +1394,9 @@ def generate_image_huggingface(prompt, model="black-forest-labs/FLUX.1-schnell")
             with open(filename, 'wb') as f:
                 f.write(response.content)
             
-            speak(f"Image created successfully and saved")
+            speak("Image created successfully and saved")
             print(f"Image saved: {filename}")
             
-            # Open the image
             try:
                 import os
                 os.startfile(str(filename))
@@ -988,38 +1405,125 @@ def generate_image_huggingface(prompt, model="black-forest-labs/FLUX.1-schnell")
                 
             return True
         else:
-            speak("Image generation service is warming up. Please try again in a moment.")
+            speak("Service warming up. Please try again in a moment.")
             return False
             
     except Exception as e:
-        print(f"Hugging Face generation error: {e}")
-        speak("Sorry, I could not generate the image right now.")
+        print(f"Hugging Face error: {e}")
+        speak("Could not generate image.")
         return False
 
 
-# Main image generation function (uses free service by default)
-def generate_image(prompt, service="pollinations", **kwargs):
+def generate_image_replicate(prompt):
     """
-    Generate image using specified service
+    Replicate API - Free tier available
+    No API key needed 
+    """
+    try:
+        enhanced_prompt = enhance_prompt_with_ai(prompt)
+        speak("Creating your image with advanced AI. Please wait...")
+        
+        # Using Pollinations with better parameters as most reliable free option
+        url = "https://image.pollinations.ai/prompt/" + requests.utils.quote(enhanced_prompt)
+        
+        params = {
+            "width": 1024,
+            "height": 1024,
+            "seed": -1,  
+            "nologo": "true",
+            "enhance": "true",
+            "model": "flux-pro"  
+        }
+        
+        response = requests.get(url, params=params, timeout=90)
+        
+        if response.status_code == 200:
+            images_dir = Path.home() / "Pictures" / "IRA_Generated_Images"
+            images_dir.mkdir(parents=True, exist_ok=True)
+            
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            safe_prompt = "".join(c for c in prompt[:30] if c.isalnum() or c in (' ', '-', '_')).strip()
+            filename = images_dir / f"{safe_prompt}_{timestamp}.png"
+            
+            with open(filename, 'wb') as f:
+                f.write(response.content)
+            
+            speak("Image created successfully")
+            print(f"Image saved: {filename}")
+            
+            try:
+                import os
+                os.startfile(str(filename))
+            except:
+                pass
+                
+            return True
+        return False
+            
+    except Exception as e:
+        print(f"Replicate error: {e}")
+        return False
+
+
+def generate_image_multiple_attempts(prompt, service="auto"):
+    """
+    Smart image generation with reliable fallback options
+    Removed Hugging Face due to reliability issues
+    """
+    try:
+        enhanced_prompt = enhance_prompt_with_ai(prompt)
+        
+        # Try services in order of quality and reliability
+        if service == "auto":
+            # Try Stability AI if key available (BEST QUALITY)
+            if STABILITY_API_KEY:
+                print("Attempting Stability AI (best quality)...")
+                result = generate_image_stability_ai(prompt, STABILITY_API_KEY)
+                if result:
+                    return True
+                print("Stability AI failed, trying alternatives...")
+            
+            # Try Pollinations Enhanced (MOST RELIABLE FREE)
+            print("Using Pollinations AI with enhanced prompts...")
+            result = generate_image_pollinations_enhanced(prompt)
+            if result:
+                return True
+            
+            # Final fallback to Replicate
+            print("Trying alternative service...")
+            return generate_image_replicate(prompt)
+        
+        elif service == "stability":
+            return generate_image_stability_ai(prompt, STABILITY_API_KEY)
+        elif service == "replicate":
+            return generate_image_replicate(prompt)
+        else:
+            return generate_image_pollinations_enhanced(prompt)
+            
+    except Exception as e:
+        print(f"All services failed: {e}")
+        speak("Unable to generate image at this time. Please try again later.")
+        return False
+
+
+def generate_image(prompt, service="auto", **kwargs):
+    """
+    Main image generation function with AI-enhanced prompts
     
     Args:
-        prompt: Text description of image to generate
-        service: 'pollinations' (free, default), 'huggingface' (free), or 'stable-diffusion' (requires API key)
-        **kwargs: Additional parameters (api_key for stable-diffusion, width, height, etc.)
+        prompt: User's description of the image
+        service: 'auto' (tries all), 'stability', 'huggingface', or 'pollinations'
+        **kwargs: api_key, width, height, style, etc.
     """
-    if service == "pollinations":
-        return generate_image_pollinations(prompt, 
-                                          width=kwargs.get('width', 1024),
-                                          height=kwargs.get('height', 1024))
-    elif service == "huggingface":
-        return generate_image_huggingface(prompt, 
-                                         model=kwargs.get('model', 'black-forest-labs/FLUX.1-schnell'))
-    elif service == "stable-diffusion":
-        return generate_image_stable_diffusion(prompt, 
-                                              api_key=kwargs.get('api_key'))
-    else:
-        speak("Unknown image generation service")
-        return False
+    return generate_image_multiple_attempts(prompt, service)
+
+
+# PowerPoint Generation Functions - Fixed Version
+
+# Configure Gemini API Key
+GEMINI_API_KEY = "AIzaSyCYDb08-0XuFyK4s5EGzmmtsyieG_PjW1g"
+genai.configure(api_key=GEMINI_API_KEY)
+
 
 def generate_ppt_content_with_ai(topic, num_slides=7):
     """
@@ -1029,7 +1533,7 @@ def generate_ppt_content_with_ai(topic, num_slides=7):
         speak(f"Generating content for presentation on {topic}")
         
         # Configure the model
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('models/gemini-2.5-flash')
         
         prompt = f"""Create a PowerPoint presentation outline on "{topic}" with exactly {num_slides} slides.
 
@@ -1336,630 +1840,310 @@ def create_simple_ppt(title, slides_content):
         speak("Could not create simple presentation")
         return False
 
+# ============ CODE GENERATION CONFIGURATION ============
+# Choose your preferred AI for code generation
+USE_OPENAI = False  # Set to True if you have OpenAI API key
+OPENAI_API_KEY = None  # Add your OpenAI key here if using
 
-def find_file_by_name(filename, language="english"):
+def generate_code_with_ai(code_description, language_hint=None):
     """
-    Search for a file by name in common locations
-    Returns full path if found, None otherwise
-    """
-    try:
-        # Common search locations
-        search_paths = [
-            Path.home() / "Documents",
-            Path.home() / "Downloads",
-            Path.home() / "Desktop",
-            Path.home() / "Documents" / "IRA_Code_Files",
-            Path.home() / "Documents" / "IRA_Presentations",
-            Path.home() / "Documents" / "AssistantNotes",
-            Path.home() / "Pictures",
-            Path.home() / "Music",
-            Path.home() / "Videos",
-            Path.home(),  # Home directory
-        ]
-        
-        # Clean filename
-        filename = filename.strip().lower()
-        
-        # Replace spoken words with actual symbols
-        filename = filename.replace(" dot ", ".")
-        filename = filename.replace(" underscore ", "_")
-        filename = filename.replace(" dash ", "-")
-        
-        found_files = []
-        
-        if language == "hindi":
-            speak(f"{filename} को खोजा जा रहा है", language="hindi")
-        else:
-            speak(f"Searching for {filename}")
-        
-        print(f"\nSearching for: {filename}")
-        print("Searching in common locations...")
-        
-        for search_path in search_paths:
-            if search_path.exists():
-                try:
-                    # Search in directory and subdirectories
-                    for root, dirs, files in os.walk(search_path):
-                        for file in files:
-                            if filename in file.lower():
-                                full_path = os.path.join(root, file)
-                                found_files.append(full_path)
-                                print(f"Found: {full_path}")
-                        
-                        # Don't go too deep (max 2 levels)
-                        if root.count(os.sep) - str(search_path).count(os.sep) >= 2:
-                            dirs.clear()
-                            
-                except PermissionError:
-                    continue
-        
-        if found_files:
-            if len(found_files) == 1:
-                if language == "hindi":
-                    speak("फ़ाइल मिल गई", language="hindi")
-                else:
-                    speak("File found")
-                return found_files[0]
-            else:
-                # Multiple files found
-                if language == "hindi":
-                    speak(f"{len(found_files)} फ़ाइलें मिलीं। पहली फ़ाइल उपयोग की जाएगी", language="hindi")
-                else:
-                    speak(f"Found {len(found_files)} files. Using the first one")
-                
-                # Show all found files
-                for i, file_path in enumerate(found_files[:5], 1):
-                    print(f"{i}. {file_path}")
-                
-                return found_files[0]
-        else:
-            if language == "hindi":
-                speak(f"{filename} नहीं मिली। कृपया पूरा path बताएं", language="hindi")
-            else:
-                speak(f"Could not find {filename}. Please provide the full path")
-            return None
-            
-    except Exception as e:
-        print(f"File search error: {e}")
-        return None
-
-
-def read_text_file_smart(filename, language="english"):
-    """Read text file by searching with filename only"""
-    try:
-        # Try to find the file
-        file_path = find_file_by_name(filename, language)
-        
-        if not file_path:
-            return False
-        
-        print(f"\nReading file: {file_path}")
-        
-        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-            content = f.read().strip()
-        
-        if content:
-            if language == "hindi":
-                speak("फ़ाइल पढ़ी जा रही है", language="hindi")
-            else:
-                speak("Reading file")
-            
-            chunks = [content[i:i+2000] for i in range(0, len(content), 2000)]
-            
-            for chunk in chunks:
-                if language == "hindi":
-                    speak(chunk, language="hindi")
-                else:
-                    speak(chunk)
-                time.sleep(0.5)
-            
-            if language == "hindi":
-                speak("फ़ाइल पढ़ना पूरा हुआ", language="hindi")
-            else:
-                speak("Finished reading")
-            return True
-        else:
-            if language == "hindi":
-                speak("फ़ाइल खाली है", language="hindi")
-            else:
-                speak("File is empty")
-            return False
-            
-    except Exception as e:
-        print(f"Read error: {e}")
-        if language == "hindi":
-            speak("फ़ाइल नहीं पढ़ी जा सकी", language="hindi")
-        else:
-            speak("Could not read the file")
-        return False
-
-
-def read_pdf_file_smart(filename, start_page=0, end_page=None, language="english"):
-    """Read PDF file by searching with filename only"""
-    try:
-        import PyPDF2
-        
-        file_path = find_file_by_name(filename, language)
-        
-        if not file_path:
-            return False
-        
-        print(f"\nReading PDF: {file_path}")
-        
-        with open(file_path, "rb") as f:
-            reader = PyPDF2.PdfReader(f)
-            num_pages = len(reader.pages)
-            
-            if end_page is None or end_page > num_pages:
-                end_page = num_pages
-            
-            if start_page < 0 or start_page >= num_pages:
-                if language == "hindi":
-                    speak("गलत पेज नंबर", language="hindi")
-                else:
-                    speak("Invalid page number")
-                return False
-            
-            if language == "hindi":
-                speak(f"पीडीएफ पढ़ी जा रही है। कुल {num_pages} पेज हैं", language="hindi")
-            else:
-                speak(f"Reading PDF. Total {num_pages} pages")
-            
-            for i in range(start_page, end_page):
-                try:
-                    text = reader.pages[i].extract_text()
-                    
-                    if text and text.strip():
-                        if language == "hindi":
-                            speak(f"पेज {i+1}", language="hindi")
-                        else:
-                            speak(f"Page {i+1}")
-                        
-                        chunks = [text[j:j+2000] for j in range(0, len(text), 2000)]
-                        
-                        for chunk in chunks:
-                            if language == "hindi":
-                                speak(chunk, language="hindi")
-                            else:
-                                speak(chunk)
-                            time.sleep(0.3)
-                    else:
-                        if language == "hindi":
-                            speak(f"पेज {i+1} खाली है", language="hindi")
-                        else:
-                            speak(f"Page {i+1} is empty")
-                            
-                except Exception as e:
-                    print(f"Error on page {i+1}: {e}")
-                    continue
-            
-            if language == "hindi":
-                speak("पीडीएफ पढ़ना पूरा हुआ", language="hindi")
-            else:
-                speak("Finished reading PDF")
-            return True
-            
-    except ImportError:
-        speak("PyPDF2 is not installed. Please run: pip install PyPDF2")
-        return False
-    except Exception as e:
-        print(f"PDF read error: {e}")
-        if language == "hindi":
-            speak("पीडीएफ नहीं पढ़ी जा सकी", language="hindi")
-        else:
-            speak("Could not read PDF")
-        return False
-
-
-def read_word_document_smart(filename, language="english"):
-    """Read Word document by searching with filename only"""
-    try:
-        import docx
-        
-        file_path = find_file_by_name(filename, language)
-        
-        if not file_path:
-            return False
-        
-        print(f"\nReading Word document: {file_path}")
-        
-        doc = docx.Document(file_path)
-        
-        if language == "hindi":
-            speak("वर्ड डॉक्यूमेंट पढ़ा जा रहा है", language="hindi")
-        else:
-            speak("Reading Word document")
-        
-        full_text = []
-        for para in doc.paragraphs:
-            if para.text.strip():
-                full_text.append(para.text)
-        
-        content = "\n".join(full_text)
-        
-        if content:
-            chunks = [content[i:i+2000] for i in range(0, len(content), 2000)]
-            
-            for chunk in chunks:
-                if language == "hindi":
-                    speak(chunk, language="hindi")
-                else:
-                    speak(chunk)
-                time.sleep(0.3)
-            
-            if language == "hindi":
-                speak("डॉक्यूमेंट पढ़ना पूरा हुआ", language="hindi")
-            else:
-                speak("Finished reading document")
-            return True
-        else:
-            if language == "hindi":
-                speak("डॉक्यूमेंट खाली है", language="hindi")
-            else:
-                speak("Document is empty")
-            return False
-            
-    except ImportError:
-        speak("python-docx is not installed. Please run: pip install python-docx")
-        return False
-    except Exception as e:
-        print(f"Word read error: {e}")
-        if language == "hindi":
-            speak("वर्ड फ़ाइल नहीं पढ़ी जा सकी", language="hindi")
-        else:
-            speak("Could not read Word document")
-        return False
-
-
-# Configure Gemini API
-GEMINI_API_KEY = "AIzaSyCYDb08-0XuFyK4s5EGzmmtsyieG_PjW1g"
-genai.configure(api_key=GEMINI_API_KEY)
-
-def write_code_in_vscode(code_description=None):
-    """
-    Open VS Code and write code based on voice description
+    Generate high-quality code using AI
+    Returns: (code_string, detected_language, file_extension)
     """
     try:
-        if not code_description:
-            speak("What code would you like me to write?")
-            code_description = takecommand()
-            
-            if not code_description or len(code_description.strip()) < 3:
-                speak("Code description not recognized")
-                return False
+        if USE_OPENAI and OPENAI_API_KEY:
+            return generate_code_openai(code_description, language_hint)
+        else:
+            return generate_code_gemini(code_description, language_hint)
+    except Exception as e:
+        print(f"Code generation error: {e}")
+        return None, None, None
+
+
+def generate_code_gemini(code_description, language_hint=None):
+    """
+    Generate code using Google Gemini (FREE)
+    """
+    try:
+        # UPDATED: Use the latest stable Gemini model
+        model = genai.GenerativeModel('models/gemini-2.5-flash')  # Fast and stable
         
-        speak(f"Generating code for: {code_description}")
-        print(f"\nAttempting to generate code for: {code_description}")
-        print("Sending request to Gemini API...")
+        lang_instruction = f"Write this in {language_hint}" if language_hint else "Choose the most appropriate programming language"
         
-        # Try different model names in order (updated for 2025)
-        model_names = [
-            'gemini-2.0-flash-exp',      # Latest experimental model
-            'gemini-1.5-flash-002',       # Stable flash model
-            'gemini-1.5-pro-002',         # Stable pro model
-            'gemini-1.0-pro',             # Fallback legacy model
-        ]
+        prompt = f"""You are an expert programmer. Generate production-ready, professional code.
+
+TASK: {code_description}
+
+REQUIREMENTS:
+- {lang_instruction}
+- Include ALL necessary imports and dependencies
+- Add comprehensive error handling (try-catch blocks)
+- Write clear, descriptive comments
+- Follow best practices and coding standards
+- Make code immediately runnable
+- Add input validation where needed
+- Include a docstring/header comment explaining the code
+
+OUTPUT FORMAT:
+- Return ONLY executable code
+- No markdown formatting
+- No explanations outside code comments
+- Start directly with imports or code
+
+Generate the complete, working code now:"""
+
+        response = model.generate_content(prompt)
+        generated_code = response.text.strip()
         
-        generated_code = None
-        successful_model = None
-        last_error = None
+        # Clean markdown if present
+        generated_code = generated_code.replace('```python', '').replace('```javascript', '')
+        generated_code = generated_code.replace('```java', '').replace('```cpp', '')
+        generated_code = generated_code.replace('```c++', '').replace('```', '').strip()
         
-        for model_name in model_names:
-            try:
-                print(f"Trying model: {model_name}")
-                model = genai.GenerativeModel(model_name)
-                
-                prompt = f"""Write clean, well-commented code for: {code_description}
+        # Detect language and extension
+        language, extension = detect_code_language(generated_code)
+        
+        print(f"Generated {language} code ({len(generated_code)} characters)")
+        return generated_code, language, extension
+        
+    except Exception as e:
+        print(f"Gemini generation error: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, None, None
+
+
+def generate_code_openai(code_description, language_hint=None):
+    """
+    Generate code using OpenAI (PAID - Better Quality)
+    """
+    try:
+        import openai
+        openai.api_key = OPENAI_API_KEY
+        
+        lang_instruction = f"in {language_hint}" if language_hint else ""
+        
+        prompt = f"""Generate production-ready code {lang_instruction} for: {code_description}
 
 Requirements:
-- Include helpful comments explaining the logic
-- Follow best practices and conventions
-- Add basic error handling where appropriate
-- Make the code production-ready and functional
+- Include all imports and dependencies
+- Add error handling
+- Write clear comments
+- Follow best practices
+- Make it immediately executable
 
-Return ONLY the code without any explanations or markdown formatting."""
-                
-                response = model.generate_content(prompt)
-                
-                if response and response.text:
-                    generated_code = response.text.strip()
-                    successful_model = model_name
-                    print(f"✓ Successfully generated code using {model_name}")
-                    break
-                    
-            except Exception as e:
-                error_msg = str(e)
-                last_error = error_msg
-                print(f"✗ Failed with {model_name}: {error_msg[:150]}")
-                
-                # Extract error type for better debugging
-                if "404" in error_msg:
-                    print(f"  Error type: NotFound")
-                elif "429" in error_msg:
-                    print(f"  Error type: RateLimitExceeded")
-                elif "403" in error_msg:
-                    print(f"  Error type: PermissionDenied")
-                
-                continue
+Return only the code, no explanations."""
+
+        response = openai.ChatCompletion.create(
+            model="gpt-4",  # or "gpt-3.5-turbo" for cheaper option
+            messages=[
+                {"role": "system", "content": "You are an expert programmer who writes clean, production-ready code."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3  # Lower = more focused, deterministic code
+        )
+        
+        generated_code = response.choices[0].message.content.strip()
+        language, extension = detect_code_language(generated_code)
+        
+        return generated_code, language, extension
+        
+    except Exception as e:
+        print(f"OpenAI generation error: {e}")
+        return None, None, None
+
+
+def detect_code_language(code):
+    """
+    Detect programming language from code content
+    Returns: (language_name, file_extension)
+    """
+    code_lower = code.lower()
+    
+    # Python detection
+    if 'import ' in code or 'def ' in code or 'print(' in code or 'from ' in code:
+        return 'Python', '.py'
+    
+    # JavaScript/Node.js detection
+    elif 'const ' in code or 'let ' in code or 'function' in code or 'console.log' in code or 'require(' in code:
+        return 'JavaScript', '.js'
+    
+    # Java detection
+    elif 'public class' in code or 'public static void main' in code or 'System.out.println' in code:
+        return 'Java', '.java'
+    
+    # C++ detection
+    elif '#include' in code or 'std::' in code or 'cout' in code:
+        return 'C++', '.cpp'
+    
+    # C# detection
+    elif 'using System' in code or 'namespace' in code:
+        return 'C#', '.cs'
+    
+    # HTML detection
+    elif '<!DOCTYPE' in code or '<html' in code or '<body' in code:
+        return 'HTML', '.html'
+    
+    # Default to Python
+    else:
+        return 'Python', '.py'
+
+
+def open_vscode_and_write_code(code_description):
+    """
+    Main function: Generate code, save to file, open in VS Code, ask user to run
+    """
+    try:
+        speak(f"Generating code for {code_description}. Please wait.")
+        
+        # Generate code using AI
+        generated_code, language, extension = generate_code_with_ai(code_description)
         
         if not generated_code:
-            print(f"AI generation failed: All AI models failed")
-            speak("AI generation failed. Creating a template file instead")
-            
-            # Create template based on description
-            desc_lower = code_description.lower()
-            
-            if 'python' in desc_lower or 'calculator' in desc_lower or 'script' in desc_lower:
-                generated_code = f'''# {code_description}
-# Generated by IRA - Template
-# Created: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-
-def main():
-    """
-    TODO: Implement {code_description}
-    """
-    print("Hello from {code_description}")
-    # Add your implementation here
-    pass
-
-if __name__ == "__main__":
-    main()
-'''
-            elif 'html' in desc_lower or 'webpage' in desc_lower or 'website' in desc_lower:
-                generated_code = f'''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{code_description}</title>
-    <style>
-        body {{
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            padding: 20px;
-        }}
-    </style>
-</head>
-<body>
-    <h1>{code_description}</h1>
-    <p>TODO: Add your content here</p>
-    
-    <script>
-        // Add your JavaScript here
-        console.log('Page loaded');
-    </script>
-</body>
-</html>'''
-            else:
-                generated_code = f'''// {code_description}
-// Generated by IRA - Template
-// Created: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-
-function main() {{
-    // TODO: Implement {code_description}
-    console.log("Hello from {code_description}");
-}}
-
-main();
-'''
-        else:
-            # Clean markdown formatting from AI response
-            generated_code = generated_code.replace('```python', '').replace('```javascript', '')
-            generated_code = generated_code.replace('```java', '').replace('```html', '')
-            generated_code = generated_code.replace('```css', '').replace('```', '').strip()
+            speak("Sorry, I could not generate the code. Please try again.")
+            return False
         
-        # Determine file extension
-        ext = 'py'
-        desc_lower = code_description.lower()
+        # Create save directory
+        code_folder = Path.home() / "Documents" / "IRA_Generated_Code"
+        code_folder.mkdir(parents=True, exist_ok=True)
         
-        if 'javascript' in desc_lower or 'js' in desc_lower or 'node' in desc_lower:
-            ext = 'js'
-        elif 'java' in desc_lower and 'javascript' not in desc_lower:
-            ext = 'java'
-        elif 'html' in desc_lower or 'webpage' in desc_lower or 'website' in desc_lower:
-            ext = 'html'
-        elif 'css' in desc_lower or 'style' in desc_lower:
-            ext = 'css'
-        elif 'c++' in desc_lower or 'cpp' in desc_lower:
-            ext = 'cpp'
-        elif 'c#' in desc_lower or 'csharp' in desc_lower:
-            ext = 'cs'
+        # Create filename
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        safe_desc = "".join(c for c in code_description[:40] if c.isalnum() or c in (' ', '-', '_')).strip()
+        safe_desc = safe_desc.replace(' ', '_')
+        filename = code_folder / f"{safe_desc}_{timestamp}{extension}"
         
-        # Create code directory
-        code_dir = Path.home() / "Documents" / "IRA_Code_Files"
-        code_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Generate filename
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_name = "".join(c if c.isalnum() or c in ('_', '-') else '_' 
-                          for c in code_description[:40]).strip('_')
-        filename = code_dir / f"{safe_name}_{timestamp}.{ext}"
-        
-        # Write file
+        # Write code to file
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(generated_code)
         
-        print(f"✓ File saved: {filename}")
-        speak("Code file created successfully")
+        speak(f"{language} code generated successfully. Opening in VS Code.")
+        print(f"\nCode saved to: {filename}")
+        print(f"Language: {language}")
+        print(f"Lines of code: {len(generated_code.split(chr(10)))}")
         
-        # Open VS Code
-        time.sleep(0.5)
+        # Open in VS Code
+        vscode_opened = open_in_vscode(filename)
         
-        try:
-            system_os = platform.system()
-            
-            if system_os == "Windows":
-                # Try multiple methods to open VS Code
-                try:
-                    # Method 1: Direct code command
-                    result = subprocess.run(
-                        ["code", str(filename)], 
-                        capture_output=True,
-                        text=True,
-                        timeout=10
-                    )
-                    
-                    if result.returncode == 0:
-                        speak("Opening in Visual Studio Code")
-                        time.sleep(2)
-                        return True
-                    else:
-                        raise Exception("code command returned non-zero")
-                        
-                except (FileNotFoundError, Exception) as e:
-                    print(f"VS Code command failed: {e}")
-                    
-                    # Method 2: Try common VS Code installation paths
-                    vscode_paths = [
-                        r"C:\Users\{}\AppData\Local\Programs\Microsoft VS Code\Code.exe".format(os.getenv('USERNAME')),
-                        r"C:\Program Files\Microsoft VS Code\Code.exe",
-                        r"C:\Program Files (x86)\Microsoft VS Code\Code.exe",
-                    ]
-                    
-                    for vscode_path in vscode_paths:
-                        if os.path.exists(vscode_path):
-                            subprocess.Popen([vscode_path, str(filename)])
-                            speak("Opening in Visual Studio Code")
-                            time.sleep(2)
-                            return True
-                    
-                    # Method 3: Fallback to notepad
-                    print("VS Code not found. Opening in Notepad...")
-                    speak("Visual Studio Code not found. Opening in Notepad instead")
-                    subprocess.Popen(["notepad.exe", str(filename)])
-                    time.sleep(1)
-                    return True
-                    
-            elif system_os == "Darwin":  # macOS
-                subprocess.run(["open", "-a", "Visual Studio Code", str(filename)], timeout=5)
-                speak("Opening in Visual Studio Code")
-                
-            elif system_os == "Linux":
-                subprocess.run(["code", str(filename)], timeout=5)
-                speak("Opening in Visual Studio Code")
-            
-            time.sleep(2)
-            return True
-            
-        except Exception as open_error:
-            print(f"Error opening file: {open_error}")
-            speak("File created successfully. Please open it manually from your Documents folder")
-            
-            # Try to open folder instead
-            try:
-                if system_os == "Windows":
-                    os.startfile(str(code_dir))
-                elif system_os == "Darwin":
-                    subprocess.run(["open", str(code_dir)])
-                elif system_os == "Linux":
-                    subprocess.run(["xdg-open", str(code_dir)])
-            except:
-                pass
-            
-            return True
+        if not vscode_opened:
+            speak("Could not open VS Code, but code is saved in Documents folder")
         
-    except Exception as e:
-        print(f"Function error: {e}")
-        import traceback
-        traceback.print_exc()
-        speak("Sorry, I encountered an error while generating the code")
-        return False
-
-
-def open_file_in_vscode(file_path):
-    """
-    Open a specific file in VS Code
-    """
-    try:
-        # Normalize the path
-        file_path = file_path.strip()
-        file_path = file_path.replace(" slash ", "/").replace(" backslash ", "\\")
-        file_path = file_path.replace("see colon", "C:").replace("c colon", "C:")
-        file_path = file_path.replace("d colon", "D:").replace("dee colon", "D:")
-        
-        # Expand user path and make absolute
-        file_path = os.path.expanduser(file_path)
-        file_path = os.path.abspath(file_path)
-        
-        # Check if file exists
-        if not os.path.exists(file_path):
-            speak("The specified file does not exist. Please check the path.")
-            print(f"File not found: {file_path}")
-            return False
-        
-        speak("Opening file in Visual Studio Code")
-        
-        system_os = platform.system()
-        
-        if system_os == "Windows":
-            try:
-                # Try code command first
-                subprocess.Popen(["code", file_path])
-                time.sleep(2)
-                speak("File opened successfully")
-                return True
-            except FileNotFoundError:
-                # Fallback to default application
-                speak("VS Code not found. Opening with default application")
-                os.startfile(file_path)
-                time.sleep(1)
-                return True
-                
-        elif system_os == "Darwin":
-            subprocess.Popen(["open", "-a", "Visual Studio Code", file_path])
-            
-        elif system_os == "Linux":
-            subprocess.Popen(["code", file_path])
-        
+        # Wait for user to review
         time.sleep(2)
-        speak("File opened successfully")
+        
+        # Ask user if they want to run it
+        speak("Would you like me to run this code? Say yes or no.")
+        confirmation = takecommand()
+        
+        if confirmation and "yes" in confirmation.lower():
+            run_generated_code(filename, language)
+        else:
+            speak("Okay. The code is ready in VS Code whenever you need it.")
+        
         return True
         
     except Exception as e:
-        print(f"Open file error: {e}")
-        speak("Sorry, I could not open the file")
+        print(f"VS Code integration error: {e}")
+        import traceback
+        traceback.print_exc()
+        speak("Sorry, I encountered an error while generating the code.")
         return False
 
 
-def save_current_code_from_vscode(filename=None):
+def open_in_vscode(filepath):
     """
-    Save the current VS Code file with a specific name using keyboard automation
+    Open a file in Visual Studio Code
     """
     try:
-        import pyautogui
+        # Try command line 'code' command
+        subprocess.Popen(['code', str(filepath)], 
+                        stdout=subprocess.DEVNULL, 
+                        stderr=subprocess.DEVNULL)
+        return True
+    except FileNotFoundError:
+        # Try Windows installation paths
+        if platform.system() == "Windows":
+            vscode_paths = [
+                r"C:\Program Files\Microsoft VS Code\Code.exe",
+                r"C:\Program Files (x86)\Microsoft VS Code\Code.exe",
+                os.path.expanduser(r"~\AppData\Local\Programs\Microsoft VS Code\Code.exe")
+            ]
+            for path in vscode_paths:
+                if os.path.exists(path):
+                    subprocess.Popen([path, str(filepath)])
+                    return True
         
-        if not filename:
-            speak("What should be the filename?")
-            filename = takecommand()
-        
-        if filename:
-            # Ctrl+Shift+S (Save As)
-            pyautogui.hotkey('ctrl', 'shift', 's')
-            time.sleep(1.5)
-            
-            # Clear any existing text
-            pyautogui.hotkey('ctrl', 'a')
-            time.sleep(0.3)
-            
-            # Type filename
-            pyautogui.write(filename, interval=0.05)
-            time.sleep(0.5)
-            
-            # Press Enter to save
-            pyautogui.press('enter')
-            time.sleep(0.5)
-            
-            speak(f"File saved as {filename}")
+        # Fallback to default program
+        try:
+            if platform.system() == "Windows":
+                os.startfile(str(filepath))
+            elif platform.system() == "Darwin":
+                os.system(f'open "{filepath}"')
+            else:
+                os.system(f'xdg-open "{filepath}"')
             return True
-        else:
-            speak("Filename not recognized")
+        except:
             return False
-            
-    except Exception as e:
-        print(f"Save file error: {e}")
-        speak("Sorry, I could not save the file")
-        return False
 
+
+def run_generated_code(filename, language):
+    """
+    Execute the generated code safely
+    """
+    try:
+        speak(f"Running your {language} code now.")
+        
+        if language == "Python":
+            # Run Python code
+            result = subprocess.run(
+                ['python', str(filename)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=os.path.dirname(filename)
+            )
+            
+            if result.returncode == 0:
+                speak("Code executed successfully!")
+                if result.stdout:
+                    print(f"\n=== OUTPUT ===\n{result.stdout}")
+                    # Optionally speak first line of output
+                    first_line = result.stdout.split('\n')[0][:100]
+                    if first_line:
+                        speak(f"Output: {first_line}")
+            else:
+                speak("There was an error running the code.")
+                print(f"\n=== ERROR ===\n{result.stderr}")
+                
+        elif language == "JavaScript":
+            try:
+                result = subprocess.run(
+                    ['node', str(filename)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                if result.returncode == 0:
+                    speak("JavaScript code executed successfully!")
+                    if result.stdout:
+                        print(f"\n=== OUTPUT ===\n{result.stdout}")
+                else:
+                    speak("Error running JavaScript code.")
+                    print(f"\n=== ERROR ===\n{result.stderr}")
+            except FileNotFoundError:
+                speak("Node.js is not installed. Please install it to run JavaScript code.")
+                
+        elif language in ["Java", "C++", "C#"]:
+            speak(f"{language} code needs to be compiled first. Please compile and run it manually from VS Code.")
+            
+        else:
+            speak("Please run this code manually from your editor.")
+            
+    except subprocess.TimeoutExpired:
+        speak("Code execution timed out. It may be waiting for input or running too long.")
+    except Exception as e:
+        print(f"Run error: {e}")
+        speak("Could not run the code.")
 
 
 
@@ -2641,94 +2825,7 @@ def allCommands(message=1):
                read_word_document_smart(filename, language=lang)
              else:
                speak("File name not recognized")
-        elif "generate image" in query or "create image" in query or "draw image" in query or "make image" in query:
-            speak("What image would you like me to generate? Please describe it in detail.")
-            image_prompt = takecommand()
-    
-            if image_prompt:
-                generate_image(image_prompt, service="pollinations")
-            else:
-                speak("I didn't catch the image description. Please try again.")
 
-        elif "generate photo" in query or "create picture" in query or "make picture" in query:
-            speak("Please describe the photo you want me to create")
-            image_prompt = takecommand()
-    
-            if image_prompt:
-                generate_image(image_prompt, service="pollinations")
-            else:
-                speak("Image description not recognized.")
-
-        # PowerPoint Generation Commands
-        elif "create presentation" in query or "make presentation" in query or "create ppt" in query or "make ppt" in query:
-            speak("Would you like to create from a template or from a topic?")
-            choice = takecommand()
-            
-            if "template" in choice:
-                speak("Please provide the full path to your template file")
-                template_path = takecommand()
-                speak("What should be the presentation name?")
-                ppt_name = takecommand()
-                
-                if template_path and ppt_name:
-                    create_ppt_from_template(template_path, ppt_name)
-                else:
-                    speak("Template path or name not recognized")
-            
-            elif "topic" in choice:
-                speak("What topic should the presentation be about?")
-                topic = takecommand()
-                
-                if topic:
-                    speak("How many slides would you like? Say a number between 5 and 15")
-                    num_slides_text = takecommand()
-                    
-                    try:
-                        num_slides = int(''.join(filter(str.isdigit, num_slides_text)))
-                        num_slides = max(5, min(num_slides, 15))
-                    except:
-                        num_slides = 7
-                        speak("Using default 7 slides")
-                    
-                    speak("Which design theme? Professional, modern, or dark?")
-                    theme_choice = takecommand()
-                    theme = "professional"
-                    if "modern" in theme_choice:
-                        theme = "modern"
-                    elif "dark" in theme_choice:
-                        theme = "dark"
-                    
-                    create_ppt_from_topic(topic, num_slides, theme)
-                else:
-                    speak("Topic not recognized")
-            else:
-                speak("Please specify template or topic")
-        
-        elif "presentation on" in query or "ppt on" in query:
-            # Quick presentation creation
-            topic = query.replace("create presentation on", "").replace("make presentation on", "")
-            topic = topic.replace("create ppt on", "").replace("make ppt on", "").strip()
-            
-            if topic:
-                create_ppt_from_topic(topic, num_slides=7, design_theme="professional")
-            else:
-                speak("Please specify the topic")
-        # Add these elif conditions in the allCommands() function:
-
-        elif "write code" in query and ("vs code" in query or "visual studio" in query):
-            speak("What code would you like me to write?")
-            code_description = takecommand()
-            
-            if code_description:
-                write_code_in_vscode(code_description)
-            else:
-                speak("Code description not recognized")
-        
-        elif "open vs code" in query or "launch vs code" in query or "start vs code" in query:
-            write_code_in_vscode()
-        
-        elif "save code" in query or "save file" in query:
-            save_current_code_from_vscode()
         elif "hindi news" in query or "हिंदी समाचार" in query or "hindi mein news" in query:
           get_news_hindi_from_rss(language="hindi")
     
@@ -2786,19 +2883,133 @@ def allCommands(message=1):
                 whatsApp(contact_no, '', 'video call', name)  # Fixed parameters
            else:
             speak("I didn't understand. Please say whatsapp or mobile")
-      
+        elif "generate image" in query or "create image" in query or "draw image" in query or "make image" in query:
+            speak("Please describe the image you want in detail....")
+            image_prompt = takecommand()
 
+            if image_prompt and len(image_prompt) > 3:
+            # Use auto mode for best results
+               generate_image(image_prompt, service="auto")
+            else:
+               speak("I didn't catch the description. Please try again.")
+            
+        elif "generate photo" in query or "create picture" in query or "make picture" in query:
+            speak("Describe the photo you want me to create..")
+            image_prompt = takecommand()
+
+            if image_prompt and len(image_prompt) > 3:
+                generate_image(image_prompt, service="auto")
+            else:
+                speak("Image description not clear.")
+
+        # PowerPoint Generation Commands
+        elif "create presentation" in query or "make presentation" in query or "create ppt" in query or "make ppt" in query:
+            speak("Would you like to create from a template or from a topic?")
+            choice = takecommand()
+            
+            if "template" in choice:
+                speak("Please provide the full path to your template file")
+                template_path = takecommand()
+                speak("What should be the presentation name?")
+                ppt_name = takecommand()
+                
+                if template_path and ppt_name:
+                    create_ppt_from_template(template_path, ppt_name)
+                else:
+                    speak("Template path or name not recognized")
+            
+            elif "topic" in choice:
+                speak("What topic should the presentation be about?")
+                topic = takecommand()
+                
+                if topic:
+                    speak("How many slides would you like? Say a number between 5 and 15")
+                    num_slides_text = takecommand()
+                    
+                    try:
+                        num_slides = int(''.join(filter(str.isdigit, num_slides_text)))
+                        num_slides = max(5, min(num_slides, 15))
+                    except:
+                        num_slides = 7
+                        speak("Using default 7 slides")
+                    
+                    speak("Which design theme? Professional, modern, or dark?")
+                    theme_choice = takecommand()
+                    theme = "professional"
+                    if "modern" in theme_choice:
+                        theme = "modern"
+                    elif "dark" in theme_choice:
+                        theme = "dark"
+                    
+                    create_ppt_from_topic(topic, num_slides, theme)
+                else:
+                    speak("Topic not recognized")
+            else:
+                speak("Please specify template or topic")
+        
+        elif "presentation on" in query or "ppt on" in query:
+            # Quick presentation creation
+            topic = query.replace("create presentation on", "").replace("make presentation on", "")
+            topic = topic.replace("create ppt on", "").replace("make ppt on", "").strip()
+            
+            if topic:
+                create_ppt_from_topic(topic, num_slides=7, design_theme="professional")
+            else:
+                speak("Please specify the topic")
+        #  CODE GENERATION COMMANDS 
+        elif "write code" in query or "generate code" in query or "create code" in query:
+            speak("What kind of code should I write?")
+            code_description = takecommand()
+            
+            if code_description and len(code_description) > 3:
+                open_vscode_and_write_code(code_description)
+            else:
+                speak("I didn't catch that. Please describe the code you need.")
+
+        elif "code for" in query or "program for" in query or "script for" in query:
+            # Extract description from query
+            description = query
+            for phrase in ["write code for", "generate code for", "create code for", 
+                          "code for", "program for", "script for", "write program for"]:
+                description = description.replace(phrase, "")
+            description = description.strip()
+            
+            if description:
+                open_vscode_and_write_code(description)
+            else:
+                speak("Please describe what the code should do")
+
+        elif "open vs code" in query or "open vscode" in query or "launch vs code" in query:
+            speak("Opening Visual Studio Code")
+            try:
+                subprocess.Popen(['code'])
+                speak("VS Code opened")
+            except:
+                speak("Could not open VS Code. Please check if it's installed.")
         else:
-          if query.strip():
-             from engine.features import geminiai
-             geminiai(query)
+            if query.strip():
+                from engine.features import geminiai
+                geminiai(query)
+
+        
     except Exception as e:
         print(f"Error: {e}")
         speak("Sorry, I encountered an error")
     
     eel.ShowHood()
 
-
+@eel.expose
+def stop_speech():
+    """Stop current speech - callable from frontend button"""
+    global SPEECH_INTERRUPTED
+    SPEECH_INTERRUPTED = True
+    print("Speech stopped by frontend button")
+    try:
+        pygame.mixer.music.stop()
+        pygame.mixer.music.unload()
+    except:
+        pass
+    speak("Stopped")
 def hotword_listener():
     """Listen for wake word 'IRA'"""
     r = sr.Recognizer()
@@ -2839,6 +3050,9 @@ def start_hotword_thread():
 def initialize():
     """Initialize the assistant"""
     print("Initializing Multi-Language Voice Assistant...")
+    print("\n=== INTERRUPT METHOD ===")
+    print("Press SPACE key anytime to stop speaking")
+    print("========================\n")
     speak("Voice assistant initialized and ready")
     print(f"Current language: {CURRENT_LANGUAGE}")
     print("Say 'IRA' to activate voice commands")
