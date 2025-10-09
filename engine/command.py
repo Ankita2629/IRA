@@ -34,7 +34,6 @@ import subprocess
 import pyperclip
 import feedparser
 import queue
-import requests
 import datetime
 from pathlib import Path
 import json
@@ -49,15 +48,19 @@ import google.generativeai as genai
 import keyboard
 import subprocess
 import tempfile
-import os
 from pathlib import Path
-import time
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.enum.text import PP_ALIGN
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
-
+from PIL import Image
+from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
+import winreg
+from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+from ctypes import cast, POINTER
+from comtypes import CLSCTX_ALL
 translator = Translator()
 pygame.mixer.init()
 AUTO_LISTEN_MODE = True  
@@ -468,6 +471,1220 @@ def list_available_languages():
     """List all available languages"""
     lang_list = ", ".join([LANGUAGES[lang]["name"] for lang in list(LANGUAGES.keys())[:10]])
     speak(f"Available languages include: {lang_list}, and more")
+MUSIC_LIBRARY_PATH = Path.home() / "Music"
+PLAYLISTS = {}
+CURRENT_PLAYLIST = []
+CURRENT_TRACK_INDEX = 0
+
+def get_music_player_sessions():
+    """
+    Get all active music player sessions (Windows only)
+    Returns list of active media players
+    """
+    try:
+        active_players = []
+        
+        # Common music player process names
+        music_apps = {
+            "spotify.exe": "Spotify",
+            "chrome.exe": "Chrome/YouTube",
+            "msedge.exe": "Edge/YouTube", 
+            "vlc.exe": "VLC",
+            "wmplayer.exe": "Windows Media Player",
+            "iTunes.exe": "iTunes",
+            "musicbee.exe": "MusicBee",
+            "aimp.exe": "AIMP",
+            "foobar2000.exe": "Foobar2000",
+            "winamp.exe": "Winamp"
+        }
+        
+        # Check running processes
+        for proc in psutil.process_iter(['name']):
+            try:
+                proc_name = proc.info['name'].lower()
+                for app_exe, app_name in music_apps.items():
+                    if app_exe.lower() in proc_name:
+                        active_players.append(app_name)
+            except:
+                continue
+        
+        return list(set(active_players))  # Remove duplicates
+        
+    except Exception as e:
+        print(f"Get music sessions error: {e}")
+        return []
+
+
+def control_media_key(key):
+    """
+    Send media key commands (Play/Pause, Next, Previous, etc.)
+    Works with ANY media player
+    """
+    try:
+        import keyboard
+        
+        media_keys = {
+            "play": "play/pause media",
+            "pause": "play/pause media",
+            "next": "next track",
+            "previous": "previous track",
+            "stop": "stop media",
+            "volume_up": "volume up",
+            "volume_down": "volume down",
+            "mute": "volume mute"
+        }
+        
+        if key in media_keys:
+            keyboard.press_and_release(media_keys[key])
+            return True
+        return False
+        
+    except Exception as e:
+        print(f"Media key error: {e}")
+        return False
+
+
+def play_music():
+    """Universal play command for any active music player"""
+    try:
+        active_players = get_music_player_sessions()
+        
+        if active_players:
+            control_media_key("play")
+            speak("Playing music")
+            return True
+        else:
+            speak("No music player is currently running. Would you like me to open Spotify or play local music?")
+            return False
+            
+    except Exception as e:
+        print(f"Play music error: {e}")
+        speak("Could not play music")
+        return False
+
+
+def pause_music():
+    """Universal pause command"""
+    try:
+        control_media_key("pause")
+        speak("Music paused")
+        return True
+    except Exception as e:
+        print(f"Pause music error: {e}")
+        speak("Could not pause music")
+        return False
+
+
+def next_track():
+    """Skip to next track"""
+    try:
+        control_media_key("next")
+        speak("Next track")
+        return True
+    except Exception as e:
+        print(f"Next track error: {e}")
+        speak("Could not skip to next track")
+        return False
+
+
+def previous_track():
+    """Go to previous track"""
+    try:
+        control_media_key("previous")
+        speak("Previous track")
+        return True
+    except Exception as e:
+        print(f"Previous track error: {e}")
+        speak("Could not go to previous track")
+        return False
+
+
+def stop_music():
+    """Stop music playback"""
+    try:
+        control_media_key("stop")
+        speak("Music stopped")
+        return True
+    except Exception as e:
+        print(f"Stop music error: {e}")
+        speak("Could not stop music")
+        return False
+
+
+def open_spotify():
+    """Open Spotify application"""
+    try:
+        speak("Opening Spotify")
+        
+        if platform.system() == "Windows":
+            # Try Windows Store version first
+            try:
+                os.startfile("spotify:")
+                time.sleep(2)
+                return True
+            except:
+                # Try desktop version
+                spotify_paths = [
+                    os.path.expanduser(r"~\AppData\Roaming\Spotify\Spotify.exe"),
+                    r"C:\Program Files\Spotify\Spotify.exe",
+                    r"C:\Program Files (x86)\Spotify\Spotify.exe"
+                ]
+                
+                for path in spotify_paths:
+                    if os.path.exists(path):
+                        subprocess.Popen([path])
+                        speak("Spotify opened")
+                        return True
+                
+                speak("Spotify not found. Please install Spotify first.")
+                return False
+        else:
+            subprocess.Popen(["spotify"])
+            return True
+            
+    except Exception as e:
+        print(f"Open Spotify error: {e}")
+        speak("Could not open Spotify")
+        return False
+
+
+def play_on_spotify(song_name):
+    """
+    Play a song on Spotify using web browser
+    (Requires Spotify to be logged in on browser)
+    """
+    try:
+        speak(f"Searching for {song_name} on Spotify")
+        
+        # Open Spotify web player with search
+        import webbrowser
+        search_query = song_name.replace(" ", "+")
+        url = f"https://open.spotify.com/search/{search_query}"
+        webbrowser.open(url)
+        
+        speak(f"Opening Spotify web player. Click on {song_name} to play.")
+        return True
+        
+    except Exception as e:
+        print(f"Spotify play error: {e}")
+        speak("Could not play on Spotify")
+        return False
+
+
+def play_on_youtube_music(song_name):
+    """Play a song on YouTube Music"""
+    try:
+        speak(f"Playing {song_name} on YouTube Music")
+        
+        import webbrowser
+        search_query = song_name.replace(" ", "+")
+        url = f"https://music.youtube.com/search?q={search_query}"
+        webbrowser.open(url)
+        
+        time.sleep(3)
+        speak(f"YouTube Music opened. Playing {song_name}")
+        return True
+        
+    except Exception as e:
+        print(f"YouTube Music error: {e}")
+        speak("Could not play on YouTube Music")
+        return False
+
+
+def scan_local_music_library():
+    """
+    Scan local music folder and build library
+    """
+    try:
+        speak("Scanning music library")
+        
+        music_dir = MUSIC_LIBRARY_PATH
+        
+        if not music_dir.exists():
+            speak("Music folder not found")
+            return []
+        
+        # Supported audio formats
+        audio_formats = ['.mp3', '.wav', '.flac', '.m4a', '.ogg', '.wma', '.aac']
+        
+        music_files = []
+        
+        for root, dirs, files in os.walk(music_dir):
+            for file in files:
+                if any(file.lower().endswith(fmt) for fmt in audio_formats):
+                    full_path = os.path.join(root, file)
+                    music_files.append({
+                        'title': os.path.splitext(file)[0],
+                        'path': full_path,
+                        'format': os.path.splitext(file)[1]
+                    })
+        
+        speak(f"Found {len(music_files)} songs in your music library")
+        return music_files
+        
+    except Exception as e:
+        print(f"Scan library error: {e}")
+        speak("Could not scan music library")
+        return []
+
+
+def play_local_music(song_name=None):
+    """
+    Play local music file using pygame
+    """
+    try:
+        music_library = scan_local_music_library()
+        
+        if not music_library:
+            speak("No music files found in your Music folder")
+            return False
+        
+        if song_name:
+            # Search for specific song
+            song_name_lower = song_name.lower()
+            matches = [song for song in music_library if song_name_lower in song['title'].lower()]
+            
+            if matches:
+                song_to_play = matches[0]
+            else:
+                speak(f"Could not find {song_name}. Playing random song instead.")
+                song_to_play = random.choice(music_library)
+        else:
+            # Play random song
+            song_to_play = random.choice(music_library)
+        
+        speak(f"Playing {song_to_play['title']}")
+        
+        # Stop any currently playing music
+        pygame.mixer.music.stop()
+        
+        # Load and play
+        pygame.mixer.music.load(song_to_play['path'])
+        pygame.mixer.music.play()
+        
+        return True
+        
+    except Exception as e:
+        print(f"Play local music error: {e}")
+        speak("Could not play local music")
+        return False
+
+
+def create_playlist(playlist_name):
+    """Create a new playlist"""
+    try:
+        global PLAYLISTS
+        
+        if playlist_name in PLAYLISTS:
+            speak(f"Playlist {playlist_name} already exists")
+            return False
+        
+        PLAYLISTS[playlist_name] = []
+        speak(f"Playlist {playlist_name} created")
+        
+        # Save playlists to file
+        save_playlists()
+        return True
+        
+    except Exception as e:
+        print(f"Create playlist error: {e}")
+        speak("Could not create playlist")
+        return False
+
+
+def add_to_playlist(playlist_name, song_name):
+    """Add song to playlist"""
+    try:
+        global PLAYLISTS
+        
+        if playlist_name not in PLAYLISTS:
+            speak(f"Playlist {playlist_name} does not exist. Creating it now.")
+            create_playlist(playlist_name)
+        
+        music_library = scan_local_music_library()
+        song_name_lower = song_name.lower()
+        matches = [song for song in music_library if song_name_lower in song['title'].lower()]
+        
+        if matches:
+            PLAYLISTS[playlist_name].append(matches[0])
+            speak(f"Added {matches[0]['title']} to {playlist_name}")
+            save_playlists()
+            return True
+        else:
+            speak(f"Could not find {song_name}")
+            return False
+            
+    except Exception as e:
+        print(f"Add to playlist error: {e}")
+        speak("Could not add song to playlist")
+        return False
+
+
+def play_playlist(playlist_name):
+    """Play a saved playlist"""
+    try:
+        global PLAYLISTS, CURRENT_PLAYLIST, CURRENT_TRACK_INDEX
+        
+        if playlist_name not in PLAYLISTS:
+            speak(f"Playlist {playlist_name} not found")
+            return False
+        
+        if not PLAYLISTS[playlist_name]:
+            speak(f"Playlist {playlist_name} is empty")
+            return False
+        
+        CURRENT_PLAYLIST = PLAYLISTS[playlist_name]
+        CURRENT_TRACK_INDEX = 0
+        
+        speak(f"Playing playlist {playlist_name}")
+        
+        # Play first track
+        first_song = CURRENT_PLAYLIST[0]
+        pygame.mixer.music.load(first_song['path'])
+        pygame.mixer.music.play()
+        speak(f"Now playing {first_song['title']}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"Play playlist error: {e}")
+        speak("Could not play playlist")
+        return False
+
+
+def list_playlists():
+    """List all available playlists"""
+    try:
+        global PLAYLISTS
+        
+        if not PLAYLISTS:
+            speak("No playlists created yet")
+            return False
+        
+        speak(f"You have {len(PLAYLISTS)} playlists:")
+        for playlist_name, songs in PLAYLISTS.items():
+            speak(f"{playlist_name} with {len(songs)} songs")
+            time.sleep(0.3)
+        
+        return True
+        
+    except Exception as e:
+        print(f"List playlists error: {e}")
+        return False
+
+
+def save_playlists():
+    """Save playlists to file"""
+    try:
+        import json
+        
+        playlists_file = Path.home() / "Documents" / "IRA_Playlists.json"
+        
+        with open(playlists_file, 'w', encoding='utf-8') as f:
+            json.dump(PLAYLISTS, f, indent=4)
+        
+        return True
+        
+    except Exception as e:
+        print(f"Save playlists error: {e}")
+        return False
+
+
+def load_playlists():
+    """Load playlists from file"""
+    try:
+        import json
+        global PLAYLISTS
+        
+        playlists_file = Path.home() / "Documents" / "IRA_Playlists.json"
+        
+        if playlists_file.exists():
+            with open(playlists_file, 'r', encoding='utf-8') as f:
+                PLAYLISTS = json.load(f)
+            return True
+        
+        return False
+        
+    except Exception as e:
+        print(f"Load playlists error: {e}")
+        return False
+
+
+def shuffle_mode(enable=True):
+    """Enable/disable shuffle mode"""
+    try:
+        global CURRENT_PLAYLIST
+        
+        if enable:
+            random.shuffle(CURRENT_PLAYLIST)
+            speak("Shuffle mode enabled")
+        else:
+            speak("Shuffle mode disabled")
+        
+        return True
+        
+    except Exception as e:
+        print(f"Shuffle error: {e}")
+        return False
+
+
+def repeat_mode(mode="off"):
+    """
+    Set repeat mode
+    mode: "off", "one", "all"
+    """
+    try:
+        if mode == "one":
+            speak("Repeat one track enabled")
+        elif mode == "all":
+            speak("Repeat all tracks enabled")
+        else:
+            speak("Repeat mode disabled")
+        
+        return True
+        
+    except Exception as e:
+        print(f"Repeat mode error: {e}")
+        return False
+
+
+def what_is_playing():
+    """Get currently playing song info (works with most players)"""
+    try:
+        active_players = get_music_player_sessions()
+        
+        if not active_players:
+            speak("No music is currently playing")
+            return None
+        
+        speak(f"Music is playing on {', '.join(active_players)}")
+        
+        # For pygame local playback
+        if pygame.mixer.music.get_busy():
+            if CURRENT_PLAYLIST and CURRENT_TRACK_INDEX < len(CURRENT_PLAYLIST):
+                current_song = CURRENT_PLAYLIST[CURRENT_TRACK_INDEX]
+                speak(f"Currently playing: {current_song['title']}")
+                return current_song
+        
+        return None
+        
+    except Exception as e:
+        print(f"What is playing error: {e}")
+        speak("Could not determine what's playing")
+        return None
+
+
+def music_volume_control(action, value=None):
+    """
+    Control music volume
+    action: "set", "increase", "decrease"
+    value: volume level (0-100) for "set" action
+    """
+    try:
+        devices = AudioUtilities.GetSpeakers()
+        interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+        volume = cast(interface, POINTER(IAudioEndpointVolume))
+        
+        current_volume = volume.GetMasterVolumeLevelScalar()
+        
+        if action == "set" and value is not None:
+            new_volume = value / 100.0
+            volume.SetMasterVolumeLevelScalar(new_volume, None)
+            speak(f"Music volume set to {value} percent")
+        
+        elif action == "increase":
+            new_volume = min(current_volume + 0.1, 1.0)
+            volume.SetMasterVolumeLevelScalar(new_volume, None)
+            speak(f"Volume increased")
+        
+        elif action == "decrease":
+            new_volume = max(current_volume - 0.1, 0.0)
+            volume.SetMasterVolumeLevelScalar(new_volume, None)
+            speak(f"Volume decreased")
+        
+        return True
+        
+    except Exception as e:
+        print(f"Volume control error: {e}")
+        speak("Could not control volume")
+        return False
+
+
+def change_windows_theme(theme_mode="dark"):
+    """
+    Change Windows theme between Dark and Light mode
+    theme_mode: "dark" or "light"
+    """
+    try:
+        if platform.system() != "Windows":
+            speak("Theme changing is currently only available on Windows")
+            return False
+        
+        # Registry path for theme settings
+        registry_path = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+        
+        # 0 = Dark mode, 1 = Light mode
+        if theme_mode.lower() in ["dark", "black", "night"]:
+            apps_value = 0
+            system_value = 0
+            theme_name = "Dark"
+        elif theme_mode.lower() in ["light", "normal", "white", "day"]:
+            apps_value = 1
+            system_value = 1
+            theme_name = "Light"
+        else:
+            speak("Invalid theme. Please say dark or light")
+            return False
+        
+        try:
+            # Open registry key
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                registry_path,
+                0,
+                winreg.KEY_SET_VALUE
+            )
+            
+            # Set Apps theme (for applications)
+            winreg.SetValueEx(key, "AppsUseLightTheme", 0, winreg.REG_DWORD, apps_value)
+            
+            # Set System theme (for taskbar, start menu, etc.)
+            winreg.SetValueEx(key, "SystemUsesLightTheme", 0, winreg.REG_DWORD, system_value)
+            
+            winreg.CloseKey(key)
+            
+            speak(f"{theme_name} theme applied successfully")
+            print(f"✓ Theme changed to {theme_name} mode")
+            return True
+            
+        except WindowsError as e:
+            print(f"Registry error: {e}")
+            speak("Could not change theme. Administrator rights may be required")
+            return False
+            
+    except Exception as e:
+        print(f"Theme change error: {e}")
+        speak("Could not change theme")
+        return False
+
+
+def change_accent_color(color_name="blue"):
+    """
+    Change Windows accent color
+    Available colors: blue, red, green, purple, orange, pink, gray
+    """
+    try:
+        if platform.system() != "Windows":
+            speak("Accent color changing is only available on Windows")
+            return False
+        
+        # Accent color hex values (BGR format for Windows Registry)
+        accent_colors = {
+            "blue": 0xFF8C00FF,      # Default Windows blue
+            "red": 0xFF0000E8,        # Red
+            "green": 0xFF00CC6A,      # Green
+            "purple": 0xFFE74856,     # Purple
+            "orange": 0xFF0078D7,     # Orange
+            "pink": 0xFFDA1B60,       # Pink
+            "gray": 0xFF7A7574,       # Gray
+            "yellow": 0xFF00FFFF,     # Yellow
+            "teal": 0xFF00B7C3,       # Teal
+        }
+        
+        color_name = color_name.lower()
+        
+        if color_name not in accent_colors:
+            speak(f"Color {color_name} not available. Available colors are: blue, red, green, purple, orange, pink, gray, yellow, teal")
+            return False
+        
+        color_value = accent_colors[color_name]
+        
+        # Registry path for accent color
+        registry_path = r"Software\Microsoft\Windows\DWM"
+        
+        try:
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                registry_path,
+                0,
+                winreg.KEY_SET_VALUE
+            )
+            
+            # Set accent color
+            winreg.SetValueEx(key, "AccentColor", 0, winreg.REG_DWORD, color_value)
+            winreg.SetValueEx(key, "ColorizationColor", 0, winreg.REG_DWORD, color_value)
+            
+            winreg.CloseKey(key)
+            
+            speak(f"Accent color changed to {color_name}")
+            print(f"✓ Accent color changed to {color_name}")
+            
+            # Restart Explorer to apply changes
+            restart_explorer()
+            
+            return True
+            
+        except WindowsError as e:
+            print(f"Registry error: {e}")
+            speak("Could not change accent color")
+            return False
+            
+    except Exception as e:
+        print(f"Accent color error: {e}")
+        speak("Could not change accent color")
+        return False
+
+
+def enable_transparency(enable=True):
+    """
+    Enable or disable transparency effects in Windows
+    """
+    try:
+        if platform.system() != "Windows":
+            speak("This feature is only available on Windows")
+            return False
+        
+        registry_path = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+        
+        # 1 = Enable transparency, 0 = Disable
+        value = 1 if enable else 0
+        
+        try:
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                registry_path,
+                0,
+                winreg.KEY_SET_VALUE
+            )
+            
+            winreg.SetValueEx(key, "EnableTransparency", 0, winreg.REG_DWORD, value)
+            winreg.CloseKey(key)
+            
+            status = "enabled" if enable else "disabled"
+            speak(f"Transparency {status}")
+            return True
+            
+        except WindowsError as e:
+            print(f"Registry error: {e}")
+            return False
+            
+    except Exception as e:
+        print(f"Transparency error: {e}")
+        return False
+
+
+def restart_explorer():
+    """
+    Restart Windows Explorer to apply theme changes
+    """
+    try:
+        speak("Restarting Windows Explorer to apply changes")
+        
+        # Kill Explorer
+        subprocess.run(["taskkill", "/F", "/IM", "explorer.exe"], 
+                      stdout=subprocess.DEVNULL, 
+                      stderr=subprocess.DEVNULL)
+        
+        # Wait a moment
+        time.sleep(1)
+        
+        # Restart Explorer
+        subprocess.Popen("explorer.exe")
+        
+        time.sleep(1)
+        print("✓ Windows Explorer restarted")
+        return True
+        
+    except Exception as e:
+        print(f"Restart Explorer error: {e}")
+        # Explorer usually auto-restarts even if this fails
+        return False
+
+
+def get_current_theme():
+    """
+    Get the current Windows theme mode
+    """
+    try:
+        if platform.system() != "Windows":
+            return None
+        
+        registry_path = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+        
+        try:
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                registry_path,
+                0,
+                winreg.KEY_READ
+            )
+            
+            apps_theme = winreg.QueryValueEx(key, "AppsUseLightTheme")[0]
+            winreg.CloseKey(key)
+            
+            current_theme = "Light" if apps_theme == 1 else "Dark"
+            speak(f"Current theme is {current_theme} mode")
+            return current_theme
+            
+        except WindowsError:
+            return None
+            
+    except Exception as e:
+        print(f"Get theme error: {e}")
+        return None
+
+
+def toggle_theme():
+    """
+    Toggle between dark and light theme
+    """
+    try:
+        current = get_current_theme()
+        
+        if current == "Dark":
+            change_windows_theme("light")
+        else:
+            change_windows_theme("dark")
+            
+    except Exception as e:
+        print(f"Toggle theme error: {e}")
+        speak("Could not toggle theme")
+
+
+def apply_custom_theme_preset(preset_name="blue_dark"):
+    """
+    Apply custom theme presets with wallpaper + theme + accent
+    """
+    try:
+        presets = {
+            "blue_dark": {
+                "theme": "dark",
+                "accent": "blue",
+                "wallpaper_category": "space"
+            },
+            "nature_light": {
+                "theme": "light",
+                "accent": "green",
+                "wallpaper_category": "nature"
+            },
+            "sunset": {
+                "theme": "dark",
+                "accent": "orange",
+                "wallpaper_category": "sunset"
+            },
+            "ocean": {
+                "theme": "light",
+                "accent": "teal",
+                "wallpaper_category": "ocean"
+            },
+            "minimal": {
+                "theme": "light",
+                "accent": "gray",
+                "wallpaper_category": "minimal"
+            },
+            "cyberpunk": {
+                "theme": "dark",
+                "accent": "purple",
+                "wallpaper_category": "city"
+            }
+        }
+        
+        if preset_name not in presets:
+            speak(f"Preset {preset_name} not available")
+            return False
+        
+        preset = presets[preset_name]
+        
+        speak(f"Applying {preset_name} theme preset. This may take a moment.")
+        
+        # Apply theme
+        change_windows_theme(preset["theme"])
+        time.sleep(1)
+        
+        # Apply accent color
+        change_accent_color(preset["accent"])
+        time.sleep(1)
+        
+        # Apply wallpaper
+        change_wallpaper_random(preset["wallpaper_category"])
+        
+        speak(f"{preset_name} preset applied successfully")
+        return True
+        
+    except Exception as e:
+        print(f"Preset error: {e}")
+        speak("Could not apply preset")
+        return False
+
+
+def list_available_presets():
+    """
+    List all available theme presets
+    """
+    presets = [
+        "blue dark - Dark theme with blue accent and space wallpaper",
+        "nature light - Light theme with green accent and nature wallpaper",
+        "sunset - Dark theme with orange accent and sunset wallpaper",
+        "ocean - Light theme with teal accent and ocean wallpaper",
+        "minimal - Light theme with gray accent and minimal wallpaper",
+        "cyberpunk - Dark theme with purple accent and city wallpaper"
+    ]
+    
+    speak("Available theme presets:")
+    for preset in presets:
+        speak(preset)
+def change_wallpaper_from_file(image_path):
+    """
+    Change desktop wallpaper from a local file
+    Supports Windows, Linux, and macOS
+    """
+    try:
+        image_path = str(Path(image_path).resolve())
+        
+        if not os.path.exists(image_path):
+            speak("Image file not found")
+            return False
+        
+        system_os = platform.system()
+        
+        if system_os == "Windows":
+            # Windows wallpaper change
+            SPI_SETDESKWALLPAPER = 20
+            result = ctypes.windll.user32.SystemParametersInfoW(
+                SPI_SETDESKWALLPAPER, 
+                0, 
+                image_path, 
+                3  # SPIF_UPDATEINIFILE | SPIF_SENDCHANGE
+            )
+            
+            if result:
+                speak("Wallpaper changed successfully")
+                return True
+            else:
+                speak("Failed to change wallpaper")
+                return False
+                
+        elif system_os == "Linux":
+            # Linux (GNOME)
+            try:
+                os.system(f'gsettings set org.gnome.desktop.background picture-uri "file://{image_path}"')
+                speak("Wallpaper changed successfully")
+                return True
+            except:
+                # Try alternative for KDE
+                os.system(f'qdbus org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "var allDesktops = desktops();for (i=0;i<allDesktops.length;i++){{d = allDesktops[i];d.wallpaperPlugin = \'org.kde.image\';d.currentConfigGroup = Array(\'Wallpaper\', \'org.kde.image\', \'General\');d.writeConfig(\'Image\', \'file://{image_path}\')}}"')
+                speak("Wallpaper changed successfully")
+                return True
+                
+        elif system_os == "Darwin":  # macOS
+            os.system(f'osascript -e \'tell application "Finder" to set desktop picture to POSIX file "{image_path}"\'')
+            speak("Wallpaper changed successfully")
+            return True
+        else:
+            speak("Wallpaper change not supported on this OS")
+            return False
+            
+    except Exception as e:
+        print(f"Wallpaper change error: {e}")
+        speak("Could not change wallpaper")
+        return False
+
+
+def generate_gradient_wallpaper(width=1920, height=1080, category="nature"):
+    """
+    Generate beautiful gradient wallpaper locally - NO DOWNLOAD NEEDED
+    """
+    try:
+        print(f"🎨 Generating {category} wallpaper...")
+        
+        # Create image
+        img = Image.new('RGB', (width, height))
+        draw = ImageDraw.Draw(img)
+        
+        # Color schemes based on category
+        color_schemes = {
+            "nature": [(34, 139, 34), (144, 238, 144), (60, 179, 113)],  # Greens
+            "ocean": [(0, 105, 148), (0, 191, 255), (135, 206, 250)],  # Blues
+            "sunset": [(255, 94, 77), (255, 165, 0), (255, 215, 0)],  # Orange/Yellow
+            "space": [(25, 25, 112), (72, 61, 139), (138, 43, 226)],  # Purples
+            "forest": [(34, 139, 34), (0, 100, 0), (85, 107, 47)],  # Dark greens
+            "mountain": [(70, 130, 180), (176, 196, 222), (245, 245, 245)],  # Blue-gray
+            "minimal": [(240, 240, 240), (200, 200, 200), (180, 180, 180)],  # Grays
+            "fire": [(178, 34, 34), (255, 69, 0), (255, 140, 0)],  # Reds/Orange
+            "random": [tuple(random.randint(50, 255) for _ in range(3)) for _ in range(3)]
+        }
+        
+        colors = color_schemes.get(category, color_schemes["nature"])
+        
+        # Create smooth gradient
+        for y in range(height):
+            # Calculate color transition
+            ratio = y / height
+            
+            if ratio < 0.5:
+                # Transition between first and second color
+                r1, g1, b1 = colors[0]
+                r2, g2, b2 = colors[1]
+                t = ratio * 2
+            else:
+                # Transition between second and third color
+                r1, g1, b1 = colors[1]
+                r2, g2, b2 = colors[2]
+                t = (ratio - 0.5) * 2
+            
+            r = int(r1 + (r2 - r1) * t)
+            g = int(g1 + (g2 - g1) * t)
+            b = int(b1 + (b2 - b1) * t)
+            
+            draw.rectangle([(0, y), (width, y+1)], fill=(r, g, b))
+        
+        # Add some visual interest
+        add_visual_effects(img, category)
+        
+        return img
+        
+    except Exception as e:
+        print(f"Generate wallpaper error: {e}")
+        return None
+
+
+def add_visual_effects(img, category):
+    """
+    Add decorative elements to wallpaper
+    """
+    try:
+        draw = ImageDraw.Draw(img, 'RGBA')
+        width, height = img.size
+        
+        # Add circles/shapes for visual interest
+        if category in ["nature", "ocean", "space"]:
+            num_circles = random.randint(5, 15)
+            for _ in range(num_circles):
+                x = random.randint(0, width)
+                y = random.randint(0, height)
+                radius = random.randint(20, 100)
+                
+                # Semi-transparent circles
+                alpha = random.randint(10, 40)
+                color = (255, 255, 255, alpha)
+                
+                draw.ellipse(
+                    [(x-radius, y-radius), (x+radius, y+radius)],
+                    fill=color
+                )
+        
+        # Add geometric patterns for minimal style
+        elif category == "minimal":
+            for i in range(3):
+                x1 = random.randint(0, width//2)
+                y1 = random.randint(0, height//2)
+                x2 = x1 + random.randint(200, 500)
+                y2 = y1 + random.randint(200, 500)
+                
+                draw.rectangle(
+                    [(x1, y1), (x2, y2)],
+                    fill=(255, 255, 255, 20)
+                )
+        
+        # Apply blur for smooth effect
+        img = img.filter(ImageFilter.GaussianBlur(radius=2))
+        
+    except Exception as e:
+        print(f"Visual effects error: {e}")
+
+
+def create_pattern_wallpaper(width=1920, height=1080, category="geometric"):
+    """
+    Create pattern-based wallpaper
+    """
+    try:
+        print(f"🎨 Creating {category} pattern wallpaper...")
+        
+        img = Image.new('RGB', (width, height), color=(240, 240, 245))
+        draw = ImageDraw.Draw(img)
+        
+        if category == "geometric":
+            # Create geometric pattern
+            colors = [(100, 150, 200), (150, 180, 220), (180, 200, 240)]
+            
+            for x in range(0, width, 100):
+                for y in range(0, height, 100):
+                    color = random.choice(colors)
+                    size = random.randint(30, 80)
+                    
+                    if random.choice([True, False]):
+                        # Circle
+                        draw.ellipse(
+                            [(x, y), (x+size, y+size)],
+                            fill=color
+                        )
+                    else:
+                        # Square
+                        draw.rectangle(
+                            [(x, y), (x+size, y+size)],
+                            fill=color
+                        )
+        
+        elif category == "dots":
+            # Dot pattern
+            base_color = (random.randint(100, 200), random.randint(100, 200), random.randint(100, 200))
+            
+            for x in range(0, width, 50):
+                for y in range(0, height, 50):
+                    radius = random.randint(5, 15)
+                    draw.ellipse(
+                        [(x-radius, y-radius), (x+radius, y+radius)],
+                        fill=base_color
+                    )
+        
+        return img
+        
+    except Exception as e:
+        print(f"Pattern wallpaper error: {e}")
+        return None
+
+
+def change_wallpaper_random(category="random"):
+    """
+    Generate and set wallpaper - NO INTERNET REQUIRED
+    """
+    try:
+        speak(f"Creating a beautiful {category} wallpaper")
+        
+        # Get screen resolution
+        try:
+            import tkinter as tk
+            root = tk.Tk()
+            width = root.winfo_screenwidth()
+            height = root.winfo_screenheight()
+            root.destroy()
+        except:
+            width, height = 1920, 1080
+        
+        print(f"Screen resolution: {width}x{height}")
+        
+        # Random category if needed
+        if category == "random":
+            categories = ["nature", "ocean", "sunset", "space", "forest", 
+                         "mountain", "minimal", "fire"]
+            category = random.choice(categories)
+        
+        # Generate wallpaper
+        if category in ["geometric", "dots"]:
+            img = create_pattern_wallpaper(width, height, category)
+        else:
+            img = generate_gradient_wallpaper(width, height, category)
+        
+        if img is None:
+            speak("Could not generate wallpaper")
+            return False
+        
+        # Save wallpaper
+        wallpaper_dir = Path.home() / "Pictures" / "IRA_Wallpapers"
+        wallpaper_dir.mkdir(parents=True, exist_ok=True)
+        
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = wallpaper_dir / f"wallpaper_{category}_{timestamp}.jpg"
+        
+        img.save(filename, "JPEG", quality=95)
+        print(f"✓ Wallpaper saved: {filename}")
+        
+        # Set as wallpaper
+        return change_wallpaper_from_file(str(filename))
+        
+    except Exception as e:
+        print(f"Random wallpaper error: {e}")
+        import traceback
+        traceback.print_exc()
+        speak("Could not create wallpaper")
+        return False
+
+
+def change_wallpaper_from_file(image_path):
+    """
+    Change desktop wallpaper from a local file
+    """
+    try:
+        image_path = str(Path(image_path).resolve())
+        
+        if not os.path.exists(image_path):
+            speak("Image file not found")
+            return False
+        
+        system_os = platform.system()
+        
+        if system_os == "Windows":
+            SPI_SETDESKWALLPAPER = 20
+            result = ctypes.windll.user32.SystemParametersInfoW(
+                SPI_SETDESKWALLPAPER, 
+                0, 
+                image_path, 
+                3
+            )
+            
+            if result:
+                speak("Wallpaper changed successfully")
+                return True
+            else:
+                speak("Failed to change wallpaper")
+                return False
+                
+        elif system_os == "Linux":
+            try:
+                os.system(f'gsettings set org.gnome.desktop.background picture-uri "file://{image_path}"')
+                speak("Wallpaper changed successfully")
+                return True
+            except:
+                speak("Could not change wallpaper on Linux")
+                return False
+                
+        elif system_os == "Darwin":
+            os.system(f'osascript -e \'tell application "Finder" to set desktop picture to POSIX file "{image_path}"\'')
+            speak("Wallpaper changed successfully")
+            return True
+        else:
+            speak("Wallpaper change not supported on this OS")
+            return False
+            
+    except Exception as e:
+        print(f"Wallpaper change error: {e}")
+        speak("Could not change wallpaper")
+        return False
+
+
+def change_wallpaper_search(search_query):
+    """
+    Generate wallpaper based on search query
+    """
+    try:
+        speak(f"Creating {search_query} wallpaper")
+        
+        # Map search terms to categories
+        category_map = {
+            "nature": ["nature", "tree", "plant", "flower", "garden"],
+            "ocean": ["ocean", "sea", "water", "beach", "wave"],
+            "sunset": ["sunset", "sunrise", "evening", "dusk"],
+            "space": ["space", "star", "galaxy", "universe", "cosmos"],
+            "mountain": ["mountain", "hill", "peak", "valley"],
+            "minimal": ["minimal", "simple", "clean", "modern"],
+            "fire": ["fire", "flame", "warm", "hot"],
+        }
+        
+        # Find matching category
+        category = "nature"  # Default
+        search_lower = search_query.lower()
+        
+        for cat, keywords in category_map.items():
+            if any(keyword in search_lower for keyword in keywords):
+                category = cat
+                break
+        
+        return change_wallpaper_random(category)
+        
+    except Exception as e:
+        print(f"Search wallpaper error: {e}")
+        speak("Could not create wallpaper")
+        return False
 
 
 def get_weather(city):
@@ -3346,15 +4563,399 @@ def allCommands(message=1):
         elif "on youtube" in query:
             from engine.features import PlayYoutube
             PlayYoutube(query)
+        elif "change wallpaper" in query or "set wallpaper" in query or "new wallpaper" in query:
+            if "from file" in query or "from image" in query:
+                speak("Please provide the full path to the image file")
+                file_path = takecommand()
+                if file_path:
+                    change_wallpaper_from_file(file_path)
+                else:
+                    speak("File path not recognized")
+            
+            elif "random" in query:
+                # Extract category if specified
+                categories = ["nature", "space", "abstract", "minimal", "city", "technology"]
+                category = "random"
+                for cat in categories:
+                    if cat in query:
+                        category = cat
+                        break
+                change_wallpaper_random(category)
+            
+            elif "nature" in query or "forest" in query or "mountain" in query:
+                change_wallpaper_random("nature")
+            
+            elif "space" in query or "galaxy" in query or "stars" in query:
+                change_wallpaper_random("space")
+            
+            elif "abstract" in query or "art" in query:
+                change_wallpaper_random("abstract")
+            
+            elif "minimal" in query or "simple" in query:
+                change_wallpaper_random("minimal")
+            
+            elif "city" in query or "urban" in query:
+                change_wallpaper_random("city")
+            
+            elif "technology" in query or "tech" in query:
+                change_wallpaper_random("technology")
+            
+            elif "generated" in query or "ira" in query:
+                change_wallpaper_from_ira_images()
+            
+            else:
+                speak("What kind of wallpaper would you like? Say nature, space, abstract, minimal, city, technology, or random")
+                category = takecommand()
+                if category:
+                    change_wallpaper_random(category)
         
-        elif "weather" in query:
+        elif "wallpaper of" in query or "wallpaper with" in query:
+            # Search-based wallpaper
+            search_query = query.replace("change wallpaper of", "").replace("set wallpaper of", "")
+            search_query = search_query.replace("change wallpaper with", "").replace("set wallpaper with", "")
+            search_query = search_query.replace("wallpaper of", "").replace("wallpaper with", "").strip()
+            
+            if search_query:
+                change_wallpaper_search(search_query)
+            else:
+                speak("What should I search for?")
+                search_query = takecommand()
+                if search_query:
+                    change_wallpaper_search(search_query)
+        
+        elif "restore wallpaper" in query or "default wallpaper" in query:
+            restore_default_wallpaper()
+        
+        elif "random wallpaper" in query:
+            change_wallpaper_random("random")
+        elif "change wallpaper" in query or "set wallpaper" in query or "new wallpaper" in query:
+           if "nature" in query:
+             change_wallpaper_random("nature")
+           elif "ocean" in query or "sea" in query:
+              change_wallpaper_random("ocean")
+           elif "space" in query or "galaxy" in query:
+              change_wallpaper_random("space")
+           elif "sunset" in query:
+              change_wallpaper_random("sunset")
+           elif "minimal" in query:
+              change_wallpaper_random("minimal")
+           elif "fire" in query:
+               change_wallpaper_random("fire")
+           elif "random" in query:
+              change_wallpaper_random("random")
+           else:
+             speak("What kind of wallpaper? Nature, ocean, space, sunset, minimal, or random?")
+             category = takecommand()
+             if category:
+              change_wallpaper_random(category)
+
+        elif "wallpaper of" in query or "wallpaper with" in query:
+          search_query = query.replace("wallpaper of", "").replace("wallpaper with", "").strip()
+          if search_query:
+           change_wallpaper_search(search_query)
+
+        elif "beautiful wallpaper" in query:
+           categories = ["nature", "ocean", "sunset", "space"]
+           change_wallpaper_random(random.choice(categories))
+
+        elif "weather wallpaper" in query:
             speak("Please tell me the city name")
             city_name = takecommand()
             if city_name:
                 get_weather(city_name)
             else:
                 speak("City name not recognized")
+        elif "change theme" in query or "set theme" in query or "switch theme" in query:
+            if "dark" in query or "black" in query or "night" in query:
+              change_windows_theme("dark")
+
+            elif "light" in query or "normal" in query or "white" in query or "day" in query:
+             change_windows_theme("light")
+
+            else:
+             speak("Would you like dark theme or light theme?")
+             theme_choice = takecommand()
+             if theme_choice:
+              if "dark" in theme_choice or "black" in theme_choice:
+                change_windows_theme("dark")
+              elif "light" in theme_choice or "normal" in theme_choice:
+                change_windows_theme("light")
+              else:
+                speak("Please say dark or light")
+        elif "play music" in query or "start music" in query or "resume music" in query:
+            play_music()
         
+        elif "pause music" in query or "pause the music" in query or "stop the music" in query:
+            pause_music()
+        
+        elif "next song" in query or "next track" in query or "skip song" in query or "skip track" in query:
+            next_track()
+        
+        elif "previous song" in query or "previous track" in query or "last song" in query:
+            previous_track()
+        
+        elif "stop music" in query or "stop playing" in query:
+            stop_music()
+        
+        # OPEN MUSIC APPS
+        
+        elif "open spotify" in query or "launch spotify" in query or "start spotify" in query:
+            open_spotify()
+        
+        elif "play spotify" in query or "spotify play" in query:
+            if "play" in query and any(word in query for word in ["song", "track", "music"]):
+                # Extract song name
+                song_name = query.replace("play", "").replace("on spotify", "").replace("spotify", "")
+                song_name = song_name.replace("song", "").replace("track", "").strip()
+                if song_name:
+                    play_on_spotify(song_name)
+                else:
+                    open_spotify()
+            else:
+                open_spotify()
+        
+        elif "youtube music" in query:
+            if "play" in query:
+                song_name = query.replace("play", "").replace("on youtube music", "").replace("youtube music", "")
+                song_name = song_name.strip()
+                if song_name:
+                    play_on_youtube_music(song_name)
+                else:
+                    speak("What would you like to play?")
+                    song_name = takecommand()
+                    if song_name:
+                        play_on_youtube_music(song_name)
+        
+        # PLAY SPECIFIC SONGS
+        
+        elif "play song" in query or "play track" in query:
+            # Extract song name
+            song_name = query.replace("play song", "").replace("play track", "").replace("play", "")
+            song_name = song_name.replace("on spotify", "").replace("on youtube", "").strip()
+            
+            if song_name:
+                # Ask which platform
+                speak(f"Where would you like to play {song_name}? Spotify, YouTube Music, or local?")
+                platform = takecommand()
+                
+                if "spotify" in platform:
+                    play_on_spotify(song_name)
+                elif "youtube" in platform:
+                    play_on_youtube_music(song_name)
+                elif "local" in platform:
+                    play_local_music(song_name)
+                else:
+                    # Default to YouTube Music (free)
+                    play_on_youtube_music(song_name)
+            else:
+                speak("What song would you like to play?")
+                song_name = takecommand()
+                if song_name:
+                    play_on_youtube_music(song_name)
+        
+        # LOCAL MUSIC PLAYBACK
+        
+        elif "play local music" in query or "play from library" in query:
+            if "song" in query or "track" in query:
+                song_name = query.replace("play local music", "").replace("play from library", "")
+                song_name = song_name.replace("song", "").replace("track", "").strip()
+                play_local_music(song_name)
+            else:
+                play_local_music()
+        
+        elif "scan music library" in query or "scan music" in query or "refresh music library" in query:
+            scan_local_music_library()
+        
+        # PLAYLIST MANAGEMENT
+        
+        elif "create playlist" in query or "make playlist" in query or "new playlist" in query:
+            speak("What should I name the playlist?")
+            playlist_name = takecommand()
+            if playlist_name:
+                create_playlist(playlist_name)
+            else:
+                speak("Playlist name not recognized")
+        
+        elif "add to playlist" in query or "add song to playlist" in query:
+            speak("Which playlist?")
+            playlist_name = takecommand()
+            
+            if playlist_name:
+                speak("Which song would you like to add?")
+                song_name = takecommand()
+                
+                if song_name:
+                    add_to_playlist(playlist_name, song_name)
+                else:
+                    speak("Song name not recognized")
+            else:
+                speak("Playlist name not recognized")
+        
+        elif "play playlist" in query:
+            playlist_name = query.replace("play playlist", "").strip()
+            
+            if not playlist_name:
+                speak("Which playlist would you like to play?")
+                playlist_name = takecommand()
+            
+            if playlist_name:
+                play_playlist(playlist_name)
+            else:
+                speak("Playlist name not recognized")
+        
+        elif "list playlists" in query or "show playlists" in query or "my playlists" in query:
+            list_playlists()
+        
+        # SHUFFLE AND REPEAT
+        
+        elif "shuffle" in query:
+            if "on" in query or "enable" in query or "turn on" in query:
+                shuffle_mode(True)
+            elif "off" in query or "disable" in query or "turn off" in query:
+                shuffle_mode(False)
+            else:
+                shuffle_mode(True)
+        
+        elif "repeat" in query:
+            if "one" in query or "this" in query or "song" in query:
+                repeat_mode("one")
+            elif "all" in query or "playlist" in query:
+                repeat_mode("all")
+            elif "off" in query or "disable" in query:
+                repeat_mode("off")
+            else:
+                repeat_mode("all")
+        
+        # MUSIC INFO
+        
+        elif "what song is this" in query or "what's playing" in query or "whats playing" in query or "current song" in query or "now playing" in query:
+            what_is_playing()
+        
+        elif "what music is playing" in query or "what's this song" in query:
+            what_is_playing()
+        
+        # MUSIC VOLUME CONTROL
+        
+        elif "music volume" in query or "set music volume" in query:
+            # Extract volume level
+            import re
+            numbers = re.findall(r'\d+', query)
+            
+            if numbers:
+                volume_level = int(numbers[0])
+                music_volume_control("set", volume_level)
+            elif "up" in query or "increase" in query or "louder" in query:
+                music_volume_control("increase")
+            elif "down" in query or "decrease" in query or "lower" in query:
+                music_volume_control("decrease")
+            else:
+                speak("What volume level? Say a number from 0 to 100")
+                volume_text = takecommand()
+                try:
+                    volume_level = int(''.join(filter(str.isdigit, volume_text)))
+                    music_volume_control("set", volume_level)
+                except:
+                    speak("Invalid volume level")
+        
+        elif "louder" in query or "increase music volume" in query:
+            music_volume_control("increase")
+        
+        elif "quieter" in query or "decrease music volume" in query or "lower music volume" in query:
+            music_volume_control("decrease")
+        
+        # QUICK MUSIC COMMANDS
+        
+        elif query in ["play", "pause", "next", "previous", "skip"]:
+            if query == "play":
+                play_music()
+            elif query == "pause":
+                pause_music()
+            elif query in ["next", "skip"]:
+                next_track()
+            elif query == "previous":
+                previous_track()
+        elif "dark mode" in query or "enable dark mode" in query or "turn on dark mode" in query:
+          change_windows_theme("dark")
+
+        elif "light mode" in query or "enable light mode" in query or "turn on light mode" in query:
+          change_windows_theme("light")
+
+        elif "toggle theme" in query or "switch theme mode" in query:
+          toggle_theme()
+
+        elif "current theme" in query or "what theme" in query or "which theme" in query:
+           get_current_theme()
+
+# ACCENT COLOR COMMANDS
+        elif "change accent color" in query or "set accent color" in query or "accent color" in query:
+           colors = ["blue", "red", "green", "purple", "orange", "pink", "gray", "yellow", "teal"]
+
+           color_found = None
+           for color in colors:
+             if color in query:
+              color_found = color
+              break
+
+             if color_found:
+              change_accent_color(color_found)
+             else:
+              speak("What color would you like? Available colors are: blue, red, green, purple, orange, pink, gray, yellow, teal")
+              color_choice = takecommand()
+              if color_choice:
+                for color in colors:
+                  if color in color_choice:
+                    change_accent_color(color)
+                    break
+
+# TRANSPARENCY COMMANDS
+        elif "enable transparency" in query or "turn on transparency" in query:
+          enable_transparency(True)
+
+        elif "disable transparency" in query or "turn off transparency" in query:
+          enable_transparency(False)
+
+# THEME PRESET COMMANDS
+        elif "apply preset" in query or "theme preset" in query or "apply theme preset" in query:
+          presets = ["blue_dark", "nature_light", "sunset", "ocean", "minimal", "cyberpunk"]
+
+          preset_found = None
+          for preset in presets:
+            preset_words = preset.replace("_", " ")
+            if preset_words in query or preset in query:
+              preset_found = preset
+              break
+
+          if preset_found:
+            apply_custom_theme_preset(preset_found)
+          else:
+            speak("Which preset would you like? Say: blue dark, nature light, sunset, ocean, minimal, or cyberpunk")
+            preset_choice = takecommand()
+            if preset_choice:
+              preset_choice = preset_choice.replace(" ", "_")
+              apply_custom_theme_preset(preset_choice)
+
+        elif "list presets" in query or "available presets" in query or "show presets" in query:
+          list_available_presets()
+
+# QUICK THEME PRESETS
+        elif "blue dark theme" in query or "blue dark preset" in query:
+          apply_custom_theme_preset("blue_dark")
+
+        elif "nature light theme" in query or "nature light preset" in query:
+          apply_custom_theme_preset("nature_light")
+
+        elif "sunset theme" in query or "sunset preset" in query:
+            apply_custom_theme_preset("sunset")
+
+        elif "ocean theme" in query or "ocean preset" in query:
+            apply_custom_theme_preset("ocean")
+
+        elif "minimal theme" in query or "minimal preset" in query:
+           apply_custom_theme_preset("minimal")
+
+        elif "cyberpunk theme" in query or "cyberpunk preset" in query:
+           apply_custom_theme_preset("cyberpunk")
+
         elif "shutdown" in query or "turn off" in query:
             shutdown_pc()
         elif "restart" in query or "reboot" in query:
@@ -3492,7 +5093,7 @@ def allCommands(message=1):
             speak("Hello! I am IRA, an intelligent voice assistant created by Ankita, Anjali, Shubham and Amrita. I can help you with many tasks like checking weather, managing files, controlling your system, and much more. Just ask me anything!")
 
         elif "what is unique" in query or "what makes you different" in query or "what makes you special" in query or "your uniqueness" in query or "why choose you" in query or "your specialty" in query:
-                        unique_features = """What makes me truly unique? I speak 27 plus languages fluently, including all major Indian languages. I can read files just by their name, no path needed. I generate images, create presentations, and write complete code in any language. I reveal WiFi passwords, control your entire system, and provide news in both English and Hindi. Most importantly, I keep listening automatically, so you never have to activate me repeatedly. Just say IRA once, and I'm always ready to help in your preferred language."""
+                        unique_features = """What makes me truly unique? I speak 27 plus languages fluently, including all major Indian languages. I can read files just by their name, no path needed. I generate images, create presentations, and write complete code in any language. I reveal WiFi passwords, control your entire system, and provide news in both English and Hindi. Most importantly, I keep listening automatically, so you never have to activate me repeatedly.I'm always ready to help in your preferred language."""
                         speak(unique_features)
         elif "read file" in query or "read text" in query or "फ़ाइल पढ़ो" in query:
             speak("What is the file name?")
