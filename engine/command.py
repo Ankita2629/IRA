@@ -1,5 +1,6 @@
 import base64
 import keyword
+import random
 import PyPDF2
 from setuptools import sic
 import speech_recognition as sr
@@ -51,6 +52,11 @@ import tempfile
 import os
 from pathlib import Path
 import time
+from pptx import Presentation
+from pptx.util import Inches, Pt
+from pptx.enum.text import PP_ALIGN
+from pptx.dml.color import RGBColor
+from pptx.enum.shapes import MSO_SHAPE
 
 translator = Translator()
 pygame.mixer.init()
@@ -1708,222 +1714,287 @@ genai.configure(api_key=GEMINI_API_KEY)
 
 
 def generate_ppt_content_with_ai(topic, num_slides=7):
-    """
-    Generate PowerPoint content using Gemini AI
-    """
+    """Generate PowerPoint content using Gemini AI"""
     try:
         speak(f"Generating content for presentation on {topic}")
-        
-        # Configure the model
+
         model = genai.GenerativeModel('models/gemini-2.5-flash')
-        
-        prompt = f"""Create a PowerPoint presentation outline on "{topic}" with exactly {num_slides} slides.
 
-Return ONLY valid JSON in this exact format (no markdown, no code blocks):
-{{
-    "title": "Main Presentation Title",
-    "slides": [
+        prompt = f"""
+        Create a PowerPoint presentation outline on "{topic}" with exactly {num_slides} slides.
+        Return ONLY valid JSON in this exact format (no markdown, no code blocks):
+
         {{
-            "title": "Slide 1 Title",
-            "content": ["Bullet point 1", "Bullet point 2", "Bullet point 3"]
-        }},
-        {{
-            "title": "Slide 2 Title", 
-            "content": ["Point 1", "Point 2", "Point 3", "Point 4"]
+            "title": "Main Presentation Title",
+            "subtitle": "Engaging subtitle or tagline",
+            "slides": [
+                {{
+                    "title": "Slide 1 Title",
+                    "content": ["Bullet point 1", "Bullet point 2", "Bullet point 3"],
+                    "image_keyword": "simple",
+                    "bg_color": "light"
+                }},
+                {{
+                    "title": "Slide 2 Title",
+                    "content": ["Point 1", "Point 2", "Point 3"],
+                    "image_keyword": "education",
+                    "bg_color": "gradient"
+                }}
+            ]
         }}
-    ]
-}}
-
-Requirements:
-- First slide should be the title slide about "{topic}"
-- Slides 2 to {num_slides-1} should have 3-5 informative bullet points each
-- Last slide should be "Conclusion" or "Thank You"
-- Make content specific, detailed and professional
-- Return ONLY the JSON, nothing else"""
+        Requirements:
+        - First slide: Title slide with {topic}
+        - Middle slides: 3–5 informative bullet points each
+        - Last slide: Conclusion or Thank You
+        - Each slide needs "image_keyword" (one simple word)
+        - Make content professional, detailed, and engaging
+        """
 
         response = model.generate_content(prompt)
         content_text = response.text.strip()
-        
-        # Clean up the response - remove markdown code blocks if present
+
+        # Clean markdown fences if present
         content_text = content_text.replace('```json', '').replace('```', '').strip()
-        
-        # Try to parse JSON
+
         try:
             content_data = json.loads(content_text)
-            print(f"Successfully generated AI content with {len(content_data.get('slides', []))} slides")
+            print(f"✓ Generated content with {len(content_data.get('slides', []))} slides")
             return content_data
-        except json.JSONDecodeError as je:
-            print(f"JSON parse error: {je}")
-            # Try to extract JSON using regex
+
+        except json.JSONDecodeError:
             json_match = re.search(r'\{[\s\S]*\}', content_text)
             if json_match:
                 content_data = json.loads(json_match.group())
                 return content_data
             raise
-            
+
     except Exception as e:
         print(f"AI content generation error: {e}")
         speak("Using template content for presentation")
-        
-        # Fallback to template
+
         return {
-            "title": topic,
+            "title": topic.title(),
+            "subtitle": "A Comprehensive Overview",
             "slides": [
-                {
-                    "title": topic,
-                    "content": [f"Overview of {topic}", "Key concepts and fundamentals", "Importance and relevance"]
-                },
-                {
-                    "title": "Introduction",
-                    "content": ["Background information", "Context and scope", "Objectives of this presentation"]
-                },
-                {
-                    "title": "Main Points",
-                    "content": ["First key point", "Second key point", "Third key point", "Supporting details"]
-                },
-                {
-                    "title": "Analysis",
-                    "content": ["In-depth examination", "Critical insights", "Data and evidence", "Expert perspectives"]
-                },
-                {
-                    "title": "Applications",
-                    "content": ["Practical uses", "Real-world examples", "Case studies", "Implementation strategies"]
-                },
-                {
-                    "title": "Conclusion",
-                    "content": ["Summary of key points", "Key takeaways", "Future implications", "Final thoughts"]
-                },
-                {
-                    "title": "Thank You",
-                    "content": ["Questions?", "Contact information", "Additional resources"]
-                }
+                {"title": topic.title(), "content": [f"Comprehensive overview", "Key insights", "Practical applications"], "image_keyword": "business", "bg_color": "gradient"},
+                {"title": "Introduction", "content": ["Background and context", "Scope of discussion", "Importance"], "image_keyword": "people", "bg_color": "light"},
+                {"title": "Key Concepts", "content": ["Core principles", "Fundamental theories", "Essential frameworks"], "image_keyword": "idea", "bg_color": "light"},
+                {"title": "Analysis", "content": ["Data-driven findings", "Expert perspectives", "Key takeaways"], "image_keyword": "data", "bg_color": "dark"},
+                {"title": "Applications", "content": ["Real-world examples", "Practical uses", "Implementation"], "image_keyword": "technology", "bg_color": "light"},
+                {"title": "Conclusion", "content": ["Summary of points", "Main takeaways", "Recommendations"], "image_keyword": "success", "bg_color": "gradient"},
+                {"title": "Thank You", "content": ["Questions & Discussion"], "image_keyword": "team", "bg_color": "gradient"}
             ][:num_slides]
         }
 
 
-def create_ppt_from_topic(topic, num_slides=7, design_theme="professional"):
-    """
-    Create PowerPoint from scratch based on topic using AI
-    """
+def download_image_multi_source(keyword, width=1200, height=800):
+    """Download images from multiple free sources with fallbacks"""
+    keyword = keyword.split()[0].lower()
+
+    sources = [
+        {"url": f"https://picsum.photos/{width}/{height}", "name": "Picsum"},
+        {"url": f"https://loremflickr.com/{width}/{height}/{keyword}", "name": "LoremFlickr"},
+        {"url": f"https://via.placeholder.com/{width}x{height}/4A90E2/ffffff?text={keyword.capitalize()}", "name": "Placeholder"}
+    ]
+
+    for source in sources:
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(source["url"], timeout=10, allow_redirects=True, headers=headers)
+
+            if response.status_code == 200 and len(response.content) > 5000:
+                img = Image.open(BytesIO(response.content))
+                if img.mode in ('RGBA', 'LA', 'P'):
+                    img = img.convert('RGB')
+
+                temp_path = Path(f"temp_slide_{keyword}_{random.randint(1000, 9999)}.jpg")
+                img.save(temp_path, "JPEG", quality=85)
+                print(f"✓ Image downloaded from {source['name']}")
+                return temp_path
+
+        except Exception as e:
+            print(f"✗ {source['name']} failed: {str(e)[:50]}")
+            continue
+
+    print(f"✗ All sources failed for: {keyword}")
+    return None
+
+
+def add_gradient_background(slide, style="blue"):
+    """Add gradient background to slide"""
     try:
-        speak(f"Creating presentation on {topic}. This may take a moment.")
-        
-        # Generate content using AI
+        background = slide.background
+        fill = background.fill
+        fill.gradient()
+
+        gradients = {
+            "blue": [(25, 60, 120), (60, 120, 200)],
+            "purple": [(75, 0, 130), (138, 43, 226)],
+            "green": [(20, 100, 50), (50, 200, 100)],
+            "orange": [(200, 80, 40), (255, 140, 60)],
+            "teal": [(0, 128, 128), (64, 224, 208)],
+            "dark": [(30, 30, 40), (60, 60, 80)],
+            "red": [(150, 30, 30), (220, 60, 60)]
+        }
+
+        colors = gradients.get(style, gradients["blue"])
+        fill.gradient_angle = 45.0
+        fill.gradient_stops[0].color.rgb = RGBColor(*colors[0])
+        fill.gradient_stops[1].color.rgb = RGBColor(*colors[1])
+
+    except Exception as e:
+        print(f"Gradient error: {e}")
+
+
+def add_solid_background(slide, color_rgb):
+    """Add solid color background"""
+    try:
+        background = slide.background
+        fill = background.fill
+        fill.solid()
+        fill.fore_color.rgb = RGBColor(*color_rgb)
+    except Exception:
+        pass
+
+
+def create_enhanced_ppt(topic, num_slides=7, theme="modern"):
+    """Create visually enhanced PowerPoint with AI content"""
+    try:
+        print(f"\n{'='*60}")
+        print(f"🎨 CREATING ENHANCED PRESENTATION")
+        print(f"📋 Topic: {topic}")
+        print(f"📊 Slides: {num_slides}")
+        print(f"🎭 Theme: {theme}")
+        print(f"{'='*60}\n")
+
         content_data = generate_ppt_content_with_ai(topic, num_slides)
-        
         if not content_data or 'slides' not in content_data:
             speak("Failed to generate content properly")
             return False
-        
-        # Create presentation
+
         prs = Presentation()
         prs.slide_width = Inches(10)
         prs.slide_height = Inches(7.5)
-        
-        # Define color schemes
+
         themes = {
             "professional": {
-                "bg": RGBColor(255, 255, 255),
-                "title": RGBColor(0, 51, 102),
-                "text": RGBColor(51, 51, 51),
-                "accent": RGBColor(0, 112, 192)
+                "title_color": RGBColor(0, 51, 102),
+                "text_color": RGBColor(51, 51, 51),
+                "accent": RGBColor(0, 112, 192),
+                "gradient": "blue"
             },
             "modern": {
-                "bg": RGBColor(240, 240, 245),
-                "title": RGBColor(51, 51, 51),
-                "text": RGBColor(85, 85, 85),
-                "accent": RGBColor(255, 87, 51)
+                "title_color": RGBColor(75, 0, 130),
+                "text_color": RGBColor(60, 60, 60),
+                "accent": RGBColor(138, 43, 226),
+                "gradient": "purple"
+            },
+            "vibrant": {
+                "title_color": RGBColor(200, 50, 40),
+                "text_color": RGBColor(51, 51, 51),
+                "accent": RGBColor(255, 100, 50),
+                "gradient": "orange"
             },
             "dark": {
-                "bg": RGBColor(30, 30, 30),
-                "title": RGBColor(255, 255, 255),
-                "text": RGBColor(220, 220, 220),
-                "accent": RGBColor(0, 200, 255)
+                "title_color": RGBColor(255, 255, 255),
+                "text_color": RGBColor(220, 220, 220),
+                "accent": RGBColor(100, 200, 255),
+                "gradient": "dark"
             }
         }
-        
-        colors = themes.get(design_theme, themes["professional"])
-        
-        # Get slides data
+
+        colors = themes.get(theme, themes["modern"])
         slides_data = content_data.get('slides', [])
-        main_title = content_data.get('title', topic)
-        
-        # Title Slide
-        title_slide_layout = prs.slide_layouts[0]
-        slide = prs.slides.add_slide(title_slide_layout)
-        
-        title = slide.shapes.title
-        subtitle = slide.placeholders[1]
-        
-        title.text = main_title
-        subtitle.text = f"Generated by IRA\n{datetime.datetime.now().strftime('%B %d, %Y')}"
-        
-        # Style title
-        if title.text_frame.paragraphs:
-            title.text_frame.paragraphs[0].font.size = Pt(44)
-            title.text_frame.paragraphs[0].font.bold = True
-            title.text_frame.paragraphs[0].font.color.rgb = colors["title"]
-        
-        # Content Slides
-        for idx, slide_data in enumerate(slides_data):
-            if idx == 0:  # Skip first slide as it's usually a duplicate of title
-                continue
-                
-            content_slide_layout = prs.slide_layouts[1]
-            slide = prs.slides.add_slide(content_slide_layout)
-            
-            # Set title
-            title_shape = slide.shapes.title
+        main_title = content_data.get('title', topic.title())
+        subtitle = content_data.get('subtitle', f"Created by IRA • {datetime.datetime.now().strftime('%B %d, %Y')}")
+
+        # === TITLE SLIDE ===
+        blank_layout = prs.slide_layouts[6]
+        title_slide = prs.slides.add_slide(blank_layout)
+        add_gradient_background(title_slide, colors["gradient"])
+
+        title_box = title_slide.shapes.add_textbox(Inches(0.5), Inches(2.5), Inches(9), Inches(1.5))
+        title_frame = title_box.text_frame
+        title_frame.text = main_title
+        title_frame.paragraphs[0].font.size = Pt(54)
+        title_frame.paragraphs[0].font.bold = True
+        title_frame.paragraphs[0].font.color.rgb = RGBColor(255, 255, 255)
+        title_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
+
+        subtitle_box = title_slide.shapes.add_textbox(Inches(0.5), Inches(4.5), Inches(9), Inches(1))
+        subtitle_frame = subtitle_box.text_frame
+        subtitle_frame.text = subtitle
+        subtitle_frame.paragraphs[0].font.size = Pt(24)
+        subtitle_frame.paragraphs[0].font.color.rgb = RGBColor(255, 255, 255)
+        subtitle_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
+
+        # === CONTENT SLIDES ===
+        for idx, slide_data in enumerate(slides_data[1:], 1):
+            print(f"\n📄 Creating slide {idx + 1}/{len(slides_data)}...")
+            slide = prs.slides.add_slide(blank_layout)
             slide_title = slide_data.get('title', f'Slide {idx + 1}')
-            title_shape.text = slide_title
-            
-            if title_shape.text_frame.paragraphs:
-                title_shape.text_frame.paragraphs[0].font.size = Pt(32)
-                title_shape.text_frame.paragraphs[0].font.bold = True
-                title_shape.text_frame.paragraphs[0].font.color.rgb = colors["title"]
-            
-            # Add content
-            content = slide_data.get('content', [])
-            if content and len(content) > 0:
-                # Use the content placeholder
-                body_shape = slide.placeholders[1]
-                text_frame = body_shape.text_frame
-                text_frame.clear()
-                
-                for i, point in enumerate(content):
-                    if i == 0:
-                        p = text_frame.paragraphs[0]
-                    else:
-                        p = text_frame.add_paragraph()
-                    
-                    p.text = str(point)
-                    p.level = 0
-                    p.font.size = Pt(18)
-                    p.font.color.rgb = colors["text"]
-                    p.space_before = Pt(8)
-                    p.space_after = Pt(8)
-        
+            content_points = slide_data.get('content', [])
+            image_keyword = slide_data.get('image_keyword', 'business')
+            bg_style = slide_data.get('bg_color', 'light')
+
+            # Background
+            if bg_style == "gradient":
+                add_gradient_background(slide, colors["gradient"])
+                text_color = RGBColor(255, 255, 255)
+                title_color = RGBColor(255, 255, 255)
+            elif bg_style == "dark":
+                add_solid_background(slide, (35, 35, 45))
+                text_color = RGBColor(240, 240, 240)
+                title_color = RGBColor(255, 255, 255)
+            else:
+                add_solid_background(slide, (250, 250, 255))
+                text_color = colors["text_color"]
+                title_color = colors["title_color"]
+
+            # Accent bar
+            accent_bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.5), Inches(0.8), Inches(0.15), Inches(0.6))
+            accent_bar.fill.solid()
+            accent_bar.fill.fore_color.rgb = colors["accent"]
+            accent_bar.line.fill.background()
+
+            # Title
+            title_box = slide.shapes.add_textbox(Inches(0.8), Inches(0.8), Inches(9), Inches(0.6))
+            title_frame = title_box.text_frame
+            title_frame.text = slide_title
+            title_frame.paragraphs[0].font.size = Pt(36)
+            title_frame.paragraphs[0].font.bold = True
+            title_frame.paragraphs[0].font.color.rgb = title_color
+
+            # Content
+            content_box = slide.shapes.add_textbox(Inches(0.8), Inches(2), Inches(8.5), Inches(5))
+            text_frame = content_box.text_frame
+            text_frame.word_wrap = True
+
+            for point in content_points:
+                p = text_frame.add_paragraph()
+                p.text = f"● {point}"
+                p.font.size = Pt(20)
+                p.font.color.rgb = text_color
+                p.space_before = Pt(12)
+                p.space_after = Pt(12)
+                p.line_spacing = 1.3
+
         # Save presentation
         ppt_folder = Path.home() / "Documents" / "IRA_Presentations"
         ppt_folder.mkdir(parents=True, exist_ok=True)
-        
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        safe_topic = "".join(c for c in topic[:30] if c.isalnum() or c in (' ', '-', '_')).strip()
-        filename = ppt_folder / f"{safe_topic}_{timestamp}.pptx"
-        
+        filename = ppt_folder / f"{topic}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.pptx"
         prs.save(str(filename))
-        
+
         speak(f"Presentation on {topic} created successfully with {len(prs.slides)} slides")
-        print(f"Saved: {filename}")
-        
-        # Open the file
+        print(f"✅ Saved: {filename}")
+
         try:
             os.startfile(str(filename))
-        except:
+        except Exception:
             pass
-            
+
         return True
-        
+
     except Exception as e:
         print(f"Create PPT error: {e}")
         import traceback
@@ -1932,95 +2003,9 @@ def create_ppt_from_topic(topic, num_slides=7, design_theme="professional"):
         return False
 
 
-def create_ppt_from_template(template_path, output_name, custom_data=None):
-    """
-    Create PowerPoint from existing template
-    """
-    try:
-        prs = Presentation(template_path)
-        
-        # Modify template with custom data if provided
-        if custom_data:
-            if len(prs.slides) > 0:
-                title_slide = prs.slides[0]
-                if title_slide.shapes.title:
-                    title_slide.shapes.title.text = custom_data.get('title', 'Presentation Title')
-        
-        # Save the presentation
-        ppt_folder = Path.home() / "Documents" / "IRA_Presentations"
-        ppt_folder.mkdir(parents=True, exist_ok=True)
-        
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        filename = ppt_folder / f"{output_name}_{timestamp}.pptx"
-        prs.save(str(filename))
-        
-        speak(f"Presentation created from template and saved successfully")
-        print(f"Saved: {filename}")
-        
-        # Open the file
-        try:
-            os.startfile(str(filename))
-        except:
-            pass
-            
-        return True
-        
-    except Exception as e:
-        print(f"Template PPT error: {e}")
-        speak("Sorry, I could not create presentation from template")
-        return False
-def create_simple_ppt(title, slides_content):
-    """
-    Create a simple PowerPoint with provided content
-    """
-    try:
-        prs = Presentation()
-        
-        # Title Slide
-        title_slide_layout = prs.slide_layouts[0]
-        slide = prs.slides.add_slide(title_slide_layout)
-        slide.shapes.title.text = title
-        slide.placeholders[1].text = f"Created by IRA\n{datetime.datetime.now().strftime('%B %d, %Y')}"
-        
-        # Content Slides
-        for slide_info in slides_content:
-            bullet_slide_layout = prs.slide_layouts[1]
-            slide = prs.slides.add_slide(bullet_slide_layout)
-            
-            shapes = slide.shapes
-            title_shape = shapes.title
-            body_shape = shapes.placeholders[1]
-            
-            title_shape.text = slide_info['title']
-            
-            text_frame = body_shape.text_frame
-            for point in slide_info['points']:
-                p = text_frame.add_paragraph()
-                p.text = point
-                p.level = 0
-        
-        # Save
-        ppt_folder = Path.home() / "Documents" / "IRA_Presentations"
-        ppt_folder.mkdir(parents=True, exist_ok=True)
-        
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        filename = ppt_folder / f"{title}_{timestamp}.pptx"
-        prs.save(str(filename))
-        
-        speak("Simple presentation created successfully")
-        
-        try:
-            import os
-            os.startfile(str(filename))
-        except:
-            pass
-            
-        return True
-        
-    except Exception as e:
-        print(f"Simple PPT error: {e}")
-        speak("Could not create simple presentation")
-        return False
+def create_ppt_from_topic(topic, num_slides=7, design_theme="modern"):
+    """Wrapper for enhanced PPT creation"""
+    return create_enhanced_ppt(topic, num_slides, design_theme)
 
 # ============ CODE GENERATION CONFIGURATION ============
 # Choose your preferred AI for code generation
