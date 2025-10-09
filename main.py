@@ -21,7 +21,7 @@ def start():
       eel.hideFaceAuth()
       speak("Face Authentication Successsful!!")
       eel.hideFaceAuthSuccess()
-      speak("Hello, Welcome")
+      speak("Hello, Namaste!!")
       eel.hideStart()
       playAssistantSound()
     else:

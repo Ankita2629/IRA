@@ -259,12 +259,91 @@
                                         background="transparent" speed="1" style="width: 300px; height: 300px;" loop
                                         autoplay></lottie-player>
                                 </div>
-                                <div id="HelloGreet" class="mb-4" hidden>
-                                    <lottie-player
-                                        src="https://lottie.host/f60d18d4-5199-412c-b687-e5e63ae38f75/CoqjMcJIx0.json"
-                                        background="transparent" speed="1" style="width: 300px; height: 300px;" loop
-                                        autoplay></lottie-player>
-                                </div>
+<div id="HelloGreet" class="mb-4" hidden>
+    <style>
+        @keyframes fadeIn {
+            0% {
+                opacity: 0;
+                transform: translateZ(-100px) rotateY(-90deg);
+            }
+            100% {
+                opacity: 1;
+                transform: translateZ(0px) rotateY(0deg);
+            }
+        }
+        
+        @keyframes glow {
+            0%, 100% {
+                text-shadow: 
+                    0 0 5px rgba(0, 50, 100, 0.6),
+                    0 0 10px rgba(0, 50, 100, 0.6),
+                    0 0 15px rgba(0, 50, 100, 0.6),
+                    0 0 20px rgba(0, 60, 120, 0.8),
+                    0 0 35px rgba(0, 60, 120, 0.8),
+                    5px 5px 10px rgba(0, 0, 0, 0.5);
+            }
+            50% {
+                text-shadow: 
+                    0 0 10px rgba(0, 60, 120, 0.8),
+                    0 0 20px rgba(0, 60, 120, 0.8),
+                    0 0 30px rgba(0, 60, 120, 0.8),
+                    0 0 40px rgba(0, 70, 140, 1),
+                    0 0 70px rgba(0, 70, 140, 1),
+                    5px 5px 10px rgba(0, 0, 0, 0.5);
+            }
+        }
+        
+        .fade-text {
+            display: inline-block;
+            opacity: 0;
+            animation: fadeIn 0.6s ease-out forwards;
+            transform-style: preserve-3d;
+        }
+        
+        .fade-text:nth-child(1) { animation-delay: 0s; }
+        .fade-text:nth-child(2) { animation-delay: 0.1s; }
+        .fade-text:nth-child(3) { animation-delay: 0.2s; }
+        .fade-text:nth-child(4) { animation-delay: 0.3s; }
+        .fade-text:nth-child(5) { animation-delay: 0.4s; }
+        .fade-text:nth-child(6) { animation-delay: 0.5s; }
+        .fade-text:nth-child(7) { animation-delay: 0.6s; }
+        .fade-text:nth-child(8) { animation-delay: 0.7s; }
+        .fade-text:nth-child(9) { animation-delay: 0.8s; }
+        .fade-text:nth-child(10) { animation-delay: 0.9s; }
+        .fade-text:nth-child(11) { animation-delay: 1s; }
+        .fade-text:nth-child(12) { animation-delay: 1.1s; }
+        .fade-text:nth-child(13) { animation-delay: 1.2s; }
+        .fade-text:nth-child(14) { animation-delay: 1.3s; }
+        .fade-text:nth-child(15) { animation-delay: 1.4s; }
+        
+        .text-3d {
+            perspective: 1000px;
+            transform-style: preserve-3d;
+        }
+    </style>
+    
+    <div style="display: flex; justify-content: center; align-items: center; width: 100vw; height: 300px; perspective: 1000px;">
+        <h1 class="text-3d" style="font-size: 150px; 
+                   font-family: Orbitron; 
+                   font-weight: bold; 
+                   text-align: center; 
+                   margin: 0;
+                   color: white;
+                   text-shadow: 
+                       0 0 5px rgba(0, 50, 100, 0.6),
+                       0 0 10px rgba(0, 50, 100, 0.6),
+                       0 0 15px rgba(0, 50, 100, 0.6),
+                       0 0 20px rgba(0, 60, 120, 0.8),
+                       0 0 35px rgba(0, 60, 120, 0.8),
+                       5px 5px 10px rgba(0, 0, 0, 0.5),
+                       10px 10px 20px rgba(0, 0, 0, 0.3);
+                   -webkit-text-stroke: 1px rgba(0, 50, 100, 0.7);
+                   animation: glow 3s ease-in-out infinite;
+                   transform-style: preserve-3d;">
+            <span class="fade-text">H</span><span class="fade-text">e</span><span class="fade-text">l</span><span class="fade-text">l</span><span class="fade-text">o</span><span class="fade-text">,</span><span class="fade-text"> </span><span class="fade-text">N</span><span class="fade-text">a</span><span class="fade-text">m</span><span class="fade-text">a</span><span class="fade-text">s</span><span class="fade-text">t</span><span class="fade-text">e</span><span class="fade-text">!</span>
+        </h1>
+    </div>
+</div>
                             </div>
                         </div>
                         <div class="d-flex justify-content-center align-items-center">
@@ -331,17 +410,18 @@
                         <div class="col-md-12 mt-3 pt-3">
                             <div class="text-center">
                                 <div id="TextInput" class="d-flex">
-                                <input type="text" class="input-field" name="chatbox" id="chatbox"
-                                placeholder="type here...">
-                                <button id="SendBtn" class="glow-on-hover" hidden><i class="bi bi-send"></i></button>
-                                <button id="MicBtn" class="glow-on-hover"><i class="bi bi-mic"></i></button>
-                                <button id="ChatBtn" class="glow-on-hover" data-bs-toggle="offcanvas"
-                                    data-bs-target="#offcanvasScrolling" aria-controls="offcanvasScrolling">
-                                    <i class="bi bi-chat-dots"></i>
-                                </button>
-                                <button id="SettingBtn" class="glow-on-hover"><i class="bi bi-gear"></i></button>
-                            </div>
-                                
+                                    <input type="text" class="input-field" name="chatbox" id="chatbox"
+                                        placeholder="type here...">
+                                    <button id="SendBtn" class="glow-on-hover" hidden><i
+                                            class="bi bi-send"></i></button>
+                                    <button id="MicBtn" class="glow-on-hover"><i class="bi bi-mic"></i></button>
+                                    <button id="ChatBtn" class="glow-on-hover" data-bs-toggle="offcanvas"
+                                        data-bs-target="#offcanvasScrolling" aria-controls="offcanvasScrolling">
+                                        <i class="bi bi-chat-dots"></i>
+                                    </button>
+                                    <button id="SettingBtn" class="glow-on-hover"><i class="bi bi-gear"></i></button>
+                                </div>
+
                             </div>
                         </div>
                     </div>

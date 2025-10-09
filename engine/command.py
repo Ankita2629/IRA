@@ -32,7 +32,7 @@ import re
 import subprocess
 import pyperclip
 import feedparser
-
+import queue
 import requests
 import datetime
 from pathlib import Path
@@ -54,7 +54,8 @@ import time
 
 translator = Translator()
 pygame.mixer.init()
-
+AUTO_LISTEN_MODE = True  
+LISTENING_ACTIVE = False
 # Global language settings
 CURRENT_LANGUAGE = "en"
 CURRENT_LANG_CODE = "en-in"
@@ -95,6 +96,8 @@ TODO_FILE = "todo.txt"
 WEATHER_API_KEY = "90946428f9d789855734d6b3501f9978"
 reminders = []
 GEMINI_API_KEY = "AIzaSyCYDb08-0XuFyK4s5EGzmmtsyieG_PjW1g"
+# Global speech control flag
+SPEECH_INTERRUPTED = False
 genai.configure(api_key=GEMINI_API_KEY)
 
 # def speak(text, language=None, slow=False):
@@ -153,7 +156,10 @@ def speak(text, language=None, slow=False):
         SPEECH_INTERRUPTED = False
         
         for idx, sentence in enumerate(sentences):
-            # Check keyboard interrupt
+           
+            if SPEECH_INTERRUPTED:
+                print("Speech interrupted before sentence")
+                break
             try:
                 if keyboard.is_pressed('space'):
                     print("Speech interrupted by Space key")
@@ -187,7 +193,7 @@ def speak(text, language=None, slow=False):
                             break
                     except:
                         pass
-                    time.sleep(0.1)
+                    time.sleep(0.5)
                 
                 pygame.mixer.music.unload()
                 time.sleep(0.1)
@@ -212,7 +218,141 @@ def speak(text, language=None, slow=False):
                 pass
     except:
         pass
+audio_queue = queue.Queue()
+is_listening = False
+listen_thread = None
+def continuous_listener():
+    """Continuously listen in background and queue audio"""
+    global is_listening
+    r = sr.Recognizer()
+    r.energy_threshold = 4000  # Adjust based on your mic
+    r.dynamic_energy_threshold = True
+    r.pause_threshold = 0.8  # Shorter pause = more responsive
     
+    with sr.Microphone() as source:
+        print("🎤 Continuous listening started...")
+        r.adjust_for_ambient_noise(source, duration=1)
+        
+        while is_listening:
+            try:
+                # Listen with shorter timeout for real-time feel
+                audio = r.listen(source, timeout=1, phrase_time_limit=6)
+                audio_queue.put(audio)
+            except sr.WaitTimeoutError:
+                continue
+            except Exception as e:
+                print(f"Listener error: {e}")
+                time.sleep(0.5)
+
+def start_continuous_listening():
+    """Start background listening thread"""
+    global is_listening, listen_thread
+    
+    if not is_listening:
+        is_listening = True
+        listen_thread = threading.Thread(target=continuous_listener, daemon=True)
+        listen_thread.start()
+        print("✓ Real-time listening enabled")
+
+def stop_continuous_listening():
+    """Stop background listening"""
+    global is_listening
+    is_listening = False
+    print("✗ Real-time listening stopped")
+
+def get_command_from_queue(timeout=2):
+    """Get and process audio from queue"""
+    try:
+        # Wait for audio with timeout
+        audio = audio_queue.get(timeout=timeout)
+        
+        r = sr.Recognizer()
+        try:
+            # Quick recognition
+            query = r.recognize_google(audio, language='en-in')
+            print(f"You said: {query}")
+            return query.lower()
+        except sr.UnknownValueError:
+            return ""
+        except Exception as e:
+            print(f"Recognition error: {e}")
+            return ""
+    except queue.Empty:
+        return ""
+
+def takecommand_realtime(language=None):
+    """
+    IMPROVED: Takes command with real-time responsiveness
+    Processes audio as soon as you speak
+    """
+    global CURRENT_LANG_CODE
+    
+    lang_code = language if language else CURRENT_LANG_CODE
+    
+    # Start continuous listening if not already running
+    if not is_listening:
+        start_continuous_listening()
+    
+    print(f'🎧 Listening in {lang_code}...')
+    eel.DisplayMessage('Listening...')
+    
+    # Wait for audio from queue
+    start_time = time.time()
+    timeout = 10
+    
+    while time.time() - start_time < timeout:
+        query = get_command_from_queue(timeout=1)
+        if query:
+            eel.DisplayMessage(query)
+            time.sleep(0.5)
+            return query
+    
+    return ""
+
+# ALTERNATIVE: Even more responsive version with callback
+def instant_recognition_callback(recognizer, audio):
+    """Process audio instantly as callback"""
+    try:
+        query = recognizer.recognize_google(audio, language='en-in')
+        print(f"⚡ Instant: {query}")
+        eel.DisplayMessage(query)
+        eel.senderText(query)
+        
+        # Process command immediately
+        allCommands(query)
+    except sr.UnknownValueError:
+        pass
+    except Exception as e:
+        print(f"Instant recognition error: {e}")
+
+def start_instant_listening():
+    """
+    BEST OPTION: Background listening with instant callback
+    Processes speech as soon as you finish a phrase
+    """
+    r = sr.Recognizer()
+    r.energy_threshold = 4000
+    r.dynamic_energy_threshold = True
+    r.pause_threshold = 0.8
+    
+    with sr.Microphone() as source:
+        print("🎤 Instant recognition active - speak anytime!")
+        r.adjust_for_ambient_noise(source, duration=1)
+        
+        # Start background listening
+        stop_listening = r.listen_in_background(
+            source, 
+            instant_recognition_callback,
+            phrase_time_limit=6
+        )
+        
+        # Keep running
+        try:
+            while True:
+                time.sleep(0.1)
+        except KeyboardInterrupt:
+            stop_listening(wait_for_stop=False)
+            print("Stopped instant listening")    
 def translate_text(text, target_lang):
     """Translate text to target language"""
     try:
@@ -223,39 +363,83 @@ def translate_text(text, target_lang):
         return text
 
 
+# def takecommand(language=None):
+#     """Take voice command in specified language"""
+#     global CURRENT_LANG_CODE
+    
+#     lang_code = language if language else CURRENT_LANG_CODE
+#     r = sr.Recognizer()
+
+#     with sr.Microphone() as source:
+#         print(f'Listening in {lang_code}....')
+#         eel.DisplayMessage('Listening....')
+#         r.pause_threshold = 1
+#         r.adjust_for_ambient_noise(source)
+        
+#         try:
+#             audio = r.listen(source, timeout=10, phrase_time_limit=6)
+#         except sr.WaitTimeoutError:
+#             print("Listening timed out")
+#             return ""
+
+#     try:
+#         print('Recognizing')
+#         eel.DisplayMessage('Recognizing....')
+#         query = r.recognize_google(audio, language=lang_code)
+#         print(f"User said: {query}")
+#         eel.DisplayMessage(query)
+#         time.sleep(2)
+        
+#     except Exception as e:
+#         print(f"Recognition error: {e}")
+#         return ""
+    
+#     return query.lower()
 def takecommand(language=None):
-    """Take voice command in specified language"""
+    """
+    SIMPLIFIED: Quick response version
+    """
     global CURRENT_LANG_CODE
     
     lang_code = language if language else CURRENT_LANG_CODE
     r = sr.Recognizer()
+    
+    # Optimize for speed
+    r.energy_threshold = 4000
+    r.dynamic_energy_threshold = True
+    r.pause_threshold = 0.8  # Respond faster (was 1)
+    r.non_speaking_duration = 0.5  # Faster detection
 
     with sr.Microphone() as source:
-        print(f'Listening in {lang_code}....')
-        eel.DisplayMessage('Listening....')
-        r.pause_threshold = 1
-        r.adjust_for_ambient_noise(source)
+        print(f'🎧 Listening in {lang_code}...')
+        eel.DisplayMessage('Listening...')
+        
+        # Faster ambient noise adjustment
+        r.adjust_for_ambient_noise(source, duration=0.3)
         
         try:
-            audio = r.listen(source, timeout=10, phrase_time_limit=6)
+            # Shorter timeout = more responsive
+            audio = r.listen(source, timeout=5, phrase_time_limit=6)
+            
+            print('🔄 Recognizing...')
+            eel.DisplayMessage('Recognizing...')
+            
+            # Process immediately
+            query = r.recognize_google(audio, language=lang_code)
+            print(f"✓ You said: {query}")
+            eel.DisplayMessage(query)
+            time.sleep(0.5)
+            return query.lower()
+            
         except sr.WaitTimeoutError:
-            print("Listening timed out")
+            print("⏱️ Listening timed out")
             return ""
-
-    try:
-        print('Recognizing')
-        eel.DisplayMessage('Recognizing....')
-        query = r.recognize_google(audio, language=lang_code)
-        print(f"User said: {query}")
-        eel.DisplayMessage(query)
-        time.sleep(2)
-        
-    except Exception as e:
-        print(f"Recognition error: {e}")
-        return ""
-    
-    return query.lower()
-
+        except sr.UnknownValueError:
+            print("❌ Couldn't understand")
+            return ""
+        except Exception as e:
+            print(f"Error: {e}")
+            return ""
 
 def change_language(language_name):
     """Change the assistant's language"""
@@ -479,8 +663,6 @@ def create_note(text):
     except Exception as e:
         print(f"Create note error: {e}")
         speak("Sorry, I could not create the note.")
-
-
 def create_folder(folder_name):
     """Create a folder in the Documents directory"""
     try:
@@ -2532,17 +2714,545 @@ def get_sports_news():
 def get_tech_news():
     """Get technology news"""
     return get_news_from_api(category="technology", country="in")
+MEDICAL_CONDITIONS = {
+    "fever": {
+        "en": {
+            "symptoms": "High body temperature, sweating, chills, headache, muscle aches",
+            "causes": "Infection, heat exhaustion, inflammatory conditions",
+            "first_aid": "Rest, drink plenty of fluids, take fever-reducing medication like paracetamol",
+            "when_to_see_doctor": "If fever is above 103°F, lasts more than 3 days, or accompanied by severe symptoms"
+        },
+        "hi": {
+            "symptoms": "उच्च शरीर का तापमान, पसीना आना, ठंड लगना, सिरदर्द, मांसपेशियों में दर्द",
+            "causes": "संक्रमण, गर्मी से थकावट, सूजन संबंधी स्थितियां",
+            "first_aid": "आराम करें, खूब तरल पदार्थ पिएं, पेरासिटामोल जैसी बुखार कम करने वाली दवा लें",
+            "when_to_see_doctor": "यदि बुखार 103°F से अधिक है, 3 दिन से अधिक समय तक रहता है, या गंभीर लक्षणों के साथ है"
+        }
+    },
+    "headache": {
+        "en": {
+            "symptoms": "Pain in head, sensitivity to light, nausea",
+            "causes": "Stress, dehydration, eye strain, lack of sleep, tension",
+            "first_aid": "Rest in a quiet dark room, drink water, apply cold compress, take pain reliever",
+            "when_to_see_doctor": "If sudden severe headache, headache with fever, confusion, or vision changes"
+        },
+        "hi": {
+            "symptoms": "सिर में दर्द, प्रकाश के प्रति संवेदनशीलता, मतली",
+            "causes": "तनाव, निर्जलीकरण, आंखों में खिंचाव, नींद की कमी",
+            "first_aid": "शांत अंधेरे कमरे में आराम करें, पानी पिएं, ठंडी पट्टी लगाएं, दर्द निवारक लें",
+            "when_to_see_doctor": "यदि अचानक गंभीर सिरदर्द, बुखार के साथ सिरदर्द, भ्रम, या दृष्टि में बदलाव"
+        }
+    },
+    "cold": {
+        "en": {
+            "symptoms": "Runny nose, sneezing, sore throat, cough, mild fever",
+            "causes": "Viral infection, weak immunity, exposure to cold weather",
+            "first_aid": "Rest, drink warm fluids, gargle with salt water, take vitamin C",
+            "when_to_see_doctor": "If symptoms persist beyond 10 days or worsen significantly"
+        },
+        "hi": {
+            "symptoms": "नाक बहना, छींक आना, गले में खराश, खांसी, हल्का बुखार",
+            "causes": "वायरल संक्रमण, कमजोर प्रतिरक्षा, ठंडे मौसम के संपर्क में आना",
+            "first_aid": "आराम करें, गर्म तरल पदार्थ पिएं, नमक के पानी से गरारे करें, विटामिन सी लें",
+            "when_to_see_doctor": "यदि लक्षण 10 दिनों से अधिक समय तक बने रहें या काफी खराब हो जाएं"
+        }
+    },
+    "stomach pain": {
+        "en": {
+            "symptoms": "Abdominal discomfort, cramping, nausea, bloating",
+            "causes": "Indigestion, gas, food poisoning, stress, infection",
+            "first_aid": "Rest, avoid solid food initially, drink clear fluids, apply warm compress",
+            "when_to_see_doctor": "If severe pain, blood in stool, persistent vomiting, or pain lasts more than 24 hours"
+        },
+        "hi": {
+            "symptoms": "पेट में बेचैनी, ऐंठन, मतली, सूजन",
+            "causes": "अपच, गैस, खाद्य विषाक्तता, तनाव, संक्रमण",
+            "first_aid": "आराम करें, शुरू में ठोस भोजन से बचें, साफ तरल पदार्थ पिएं, गर्म सेक लगाएं",
+            "when_to_see_doctor": "यदि गंभीर दर्द, मल में रक्त, लगातार उल्टी, या दर्द 24 घंटे से अधिक समय तक रहे"
+        }
+    },
+    "diabetes": {
+        "en": {
+            "symptoms": "Increased thirst, frequent urination, fatigue, blurred vision, slow healing wounds",
+            "causes": "Insulin resistance, pancreatic problems, genetic factors, lifestyle",
+            "management": "Regular monitoring, balanced diet, exercise, medication as prescribed",
+            "when_to_see_doctor": "Regular check-ups, if blood sugar consistently high or low"
+        },
+        "hi": {
+            "symptoms": "अत्यधिक प्यास, बार-बार पेशाब आना, थकान, धुंधली दृष्टि, घाव धीरे-धीरे भरना",
+            "causes": "इंसुलिन प्रतिरोध, अग्न्याशय की समस्याएं, आनुवंशिक कारक, जीवन शैली",
+            "management": "नियमित निगरानी, संतुलित आहार, व्यायाम, निर्धारित दवाएं",
+            "when_to_see_doctor": "नियमित जांच, यदि रक्त शर्करा लगातार उच्च या निम्न"
+        }
+    }
+}
+
+# Legal Rights Database
+LEGAL_RIGHTS = {
+    "right to equality": {
+        "en": {
+            "article": "Article 14-18 of Indian Constitution",
+            "description": "Equality before law, prohibition of discrimination on grounds of religion, race, caste, sex or place of birth",
+            "what_it_means": "Every citizen is equal before the law and has equal protection of laws",
+            "violations": "Discrimination in employment, education, or public services based on caste, religion, or gender"
+        },
+        "hi": {
+            "article": "भारतीय संविधान के अनुच्छेद 14-18",
+            "description": "कानून के समक्ष समानता, धर्म, जाति, लिंग या जन्म स्थान के आधार पर भेदभाव का निषेध",
+            "what_it_means": "प्रत्येक नागरिक कानून के समक्ष समान है और कानूनों की समान सुरक्षा प्राप्त है",
+            "violations": "जाति, धर्म या लिंग के आधार पर रोजगार, शिक्षा या सार्वजनिक सेवाओं में भेदभाव"
+        }
+    },
+    "right to freedom": {
+        "en": {
+            "article": "Article 19-22 of Indian Constitution",
+            "description": "Freedom of speech, assembly, association, movement, residence, and profession",
+            "what_it_means": "Citizens have freedom to express opinions, form associations, move freely, and choose occupation",
+            "limitations": "Subject to reasonable restrictions for security, public order, and morality"
+        },
+        "hi": {
+            "article": "भारतीय संविधान के अनुच्छेद 19-22",
+            "description": "भाषण, सभा, संघ बनाने, आवागमन, निवास और पेशे की स्वतंत्रता",
+            "what_it_means": "नागरिकों को विचार व्यक्त करने, संघ बनाने, स्वतंत्र रूप से घूमने और पेशा चुनने की स्वतंत्रता है",
+            "limitations": "सुरक्षा, सार्वजनिक व्यवस्था और नैतिकता के लिए उचित प्रतिबंधों के अधीन"
+        }
+    },
+    "right against exploitation": {
+        "en": {
+            "article": "Article 23-24 of Indian Constitution",
+            "description": "Prohibition of human trafficking, forced labor, and child labor",
+            "what_it_means": "No person can be forced to work without payment or in hazardous conditions",
+            "violations": "Bonded labor, child labor in factories, human trafficking"
+        },
+        "hi": {
+            "article": "भारतीय संविधान के अनुच्छेद 23-24",
+            "description": "मानव तस्करी, बलात्कार श्रम और बाल श्रम का निषेध",
+            "what_it_means": "किसी भी व्यक्ति को बिना भुगतान या खतरनाक परिस्थितियों में काम करने के लिए मजबूर नहीं किया जा सकता",
+            "violations": "बंधुआ मजदूरी, कारखानों में बाल श्रम, मानव तस्करी"
+        }
+    },
+    "consumer rights": {
+        "en": {
+            "description": "Rights to safety, information, choice, and redressal",
+            "what_it_means": "Protection against defective products, unfair trade practices, right to compensation",
+            "how_to_complain": "File complaint with Consumer Forum, National Consumer Helpline: 1800-11-4000",
+            "time_limit": "Complaint within 2 years of purchase or issue"
+        },
+        "hi": {
+            "description": "सुरक्षा, सूचना, चयन और निवारण का अधिकार",
+            "what_it_means": "दोषपूर्ण उत्पादों, अनुचित व्यापार प्रथाओं के खिलाफ सुरक्षा, मुआवजे का अधिकार",
+            "how_to_complain": "उपभोक्ता फोरम में शिकायत दर्ज करें, राष्ट्रीय उपभोक्ता हेल्पलाइन: 1800-11-4000",
+            "time_limit": "खरीद या समस्या के 2 साल के भीतर शिकायत करें"
+        }
+    },
+    "women rights": {
+        "en": {
+            "description": "Protection against domestic violence, workplace harassment, and discrimination",
+            "laws": "Domestic Violence Act 2005, Sexual Harassment Act 2013, Dowry Prohibition Act",
+            "helpline": "Women Helpline: 1091, National Commission for Women: 011-26942369",
+            "what_to_do": "File FIR at nearest police station, contact women helpline, seek legal aid"
+        },
+        "hi": {
+            "description": "घरेलू हिंसा, कार्यस्थल उत्पीड़न और भेदभाव के खिलाफ सुरक्षा",
+            "laws": "घरेलू हिंसा अधिनियम 2005, यौन उत्पीड़न अधिनियम 2013, दहेज निषेध अधिनियम",
+            "helpline": "महिला हेल्पलाइन: 1091, राष्ट्रीय महिला आयोग: 011-26942369",
+            "what_to_do": "निकटतम पुलिस स्टेशन में एफआईआर दर्ज करें, महिला हेल्पलाइन से संपर्क करें, कानूनी सहायता लें"
+        }
+    }
+}
+
+# Emergency Contact Numbers
+EMERGENCY_CONTACTS = {
+    "en": {
+        "police": "100",
+        "ambulance": "102 or 108",
+        "fire": "101",
+        "women_helpline": "1091",
+        "child_helpline": "1098",
+        "senior_citizen": "1091 or 1291",
+        "disaster_management": "108",
+        "cyber_crime": "1930",
+        "national_helpline": "112"
+    },
+    "hi": {
+        "police": "100 - पुलिस",
+        "ambulance": "102 या 108 - एम्बुलेंस",
+        "fire": "101 - अग्निशमन",
+        "women_helpline": "1091 - महिला हेल्पलाइन",
+        "child_helpline": "1098 - बाल हेल्पलाइन",
+        "senior_citizen": "1091 या 1291 - वरिष्ठ नागरिक",
+        "disaster_management": "108 - आपदा प्रबंधन",
+        "cyber_crime": "1930 - साइबर अपराध",
+        "national_helpline": "112 - राष्ट्रीय हेल्पलाइन"
+    }
+}
+
+def get_medical_info(condition, language="en"):
+    """
+    Get medical information about a condition
+    """
+    try:
+        condition = condition.lower().strip()
+        
+        # Search in database
+        for key in MEDICAL_CONDITIONS.keys():
+            if key in condition or condition in key:
+                lang_code = "hi" if language == "hindi" else "en"
+                info = MEDICAL_CONDITIONS[key].get(lang_code, MEDICAL_CONDITIONS[key]["en"])
+                
+                if language == "hindi":
+                    speak(f"{key} के बारे में जानकारी:", language="hindi")
+                    time.sleep(0.3)
+                    
+                    if "symptoms" in info:
+                        speak(f"लक्षण: {info['symptoms']}", language="hindi")
+                        time.sleep(0.3)
+                    
+                    if "causes" in info:
+                        speak(f"कारण: {info['causes']}", language="hindi")
+                        time.sleep(0.3)
+                    
+                    if "first_aid" in info:
+                        speak(f"प्राथमिक उपचार: {info['first_aid']}", language="hindi")
+                        time.sleep(0.3)
+                    
+                    if "management" in info:
+                        speak(f"प्रबंधन: {info['management']}", language="hindi")
+                        time.sleep(0.3)
+                    
+                    if "when_to_see_doctor" in info:
+                        speak(f"डॉक्टर से कब मिलें: {info['when_to_see_doctor']}", language="hindi")
+                else:
+                    speak(f"Information about {key}:")
+                    time.sleep(0.3)
+                    
+                    if "symptoms" in info:
+                        speak(f"Symptoms: {info['symptoms']}")
+                        time.sleep(0.3)
+                    
+                    if "causes" in info:
+                        speak(f"Causes: {info['causes']}")
+                        time.sleep(0.3)
+                    
+                    if "first_aid" in info:
+                        speak(f"First aid: {info['first_aid']}")
+                        time.sleep(0.3)
+                    
+                    if "management" in info:
+                        speak(f"Management: {info['management']}")
+                        time.sleep(0.3)
+                    
+                    if "when_to_see_doctor" in info:
+                        speak(f"When to see doctor: {info['when_to_see_doctor']}")
+                
+                return True
+        
+        # If not found, use AI to generate information
+        if language == "hindi":
+            speak(f"{condition} के बारे में जानकारी खोजी जा रही है", language="hindi")
+        else:
+            speak(f"Searching for information about {condition}")
+        
+        return search_medical_info_online(condition, language)
+        
+    except Exception as e:
+        print(f"Medical info error: {e}")
+        if language == "hindi":
+            speak("चिकित्सा जानकारी प्राप्त नहीं हो सकी", language="hindi")
+        else:
+            speak("Could not retrieve medical information")
+        return False
+
+
+def search_medical_info_online(condition, language="en"):
+    """
+    Search medical information online using AI
+    """
+    try:
+        model = genai.GenerativeModel('models/gemini-2.5-flash')
+        
+        if language == "hindi":
+            prompt = f""""{condition}" के बारे में संक्षिप्त चिकित्सा जानकारी प्रदान करें:
+
+1. मुख्य लक्षण (2-3 लाइन में)
+2. सामान्य कारण (2-3 लाइन में)
+3. घरेलू उपचार / प्राथमिक उपचार (2-3 लाइन में)
+4. डॉक्टर से कब मिलना चाहिए (1-2 लाइन में)
+
+सरल हिंदी में जवाब दें। कुल 200 शब्दों से कम में।
+
+महत्वपूर्ण: यह केवल सामान्य जानकारी है। गंभीर स्थिति में तुरंत डॉक्टर से संपर्क करें।"""
+        else:
+            prompt = f"""Provide brief medical information about "{condition}":
+
+1. Main symptoms (2-3 lines)
+2. Common causes (2-3 lines)
+3. Home remedies / First aid (2-3 lines)
+4. When to see a doctor (1-2 lines)
+
+Keep response under 200 words and in simple language.
+
+IMPORTANT: This is general information only. For serious conditions, consult a doctor immediately."""
+
+        response = model.generate_content(prompt)
+        info_text = response.text.strip()
+        
+        # Speak in chunks
+        sentences = info_text.split('.')
+        for sentence in sentences:
+            if sentence.strip():
+                if language == "hindi":
+                    speak(sentence.strip(), language="hindi")
+                else:
+                    speak(sentence.strip())
+                time.sleep(0.3)
+        
+        return True
+        
+    except Exception as e:
+        print(f"Online medical search error: {e}")
+        return False
+
+
+def get_legal_info(right_or_law, language="en"):
+    """
+    Get information about legal rights and laws
+    """
+    try:
+        query = right_or_law.lower().strip()
+        
+        # Search in database
+        for key in LEGAL_RIGHTS.keys():
+            if key in query or any(word in query for word in key.split()):
+                lang_code = "hi" if language == "hindi" else "en"
+                info = LEGAL_RIGHTS[key].get(lang_code, LEGAL_RIGHTS[key]["en"])
+                
+                if language == "hindi":
+                    speak(f"{key} के बारे में जानकारी:", language="hindi")
+                    time.sleep(0.3)
+                    
+                    if "article" in info:
+                        speak(f"अनुच्छेद: {info['article']}", language="hindi")
+                        time.sleep(0.3)
+                    
+                    if "description" in info:
+                        speak(f"विवरण: {info['description']}", language="hindi")
+                        time.sleep(0.3)
+                    
+                    if "what_it_means" in info:
+                        speak(f"इसका मतलब: {info['what_it_means']}", language="hindi")
+                        time.sleep(0.3)
+                    
+                    if "laws" in info:
+                        speak(f"कानून: {info['laws']}", language="hindi")
+                        time.sleep(0.3)
+                    
+                    if "helpline" in info:
+                        speak(f"हेल्पलाइन: {info['helpline']}", language="hindi")
+                        time.sleep(0.3)
+                    
+                    if "violations" in info:
+                        speak(f"उल्लंघन: {info['violations']}", language="hindi")
+                    
+                    if "how_to_complain" in info:
+                        speak(f"शिकायत कैसे करें: {info['how_to_complain']}", language="hindi")
+                else:
+                    speak(f"Information about {key}:")
+                    time.sleep(0.3)
+                    
+                    if "article" in info:
+                        speak(f"Article: {info['article']}")
+                        time.sleep(0.3)
+                    
+                    if "description" in info:
+                        speak(f"Description: {info['description']}")
+                        time.sleep(0.3)
+                    
+                    if "what_it_means" in info:
+                        speak(f"What it means: {info['what_it_means']}")
+                        time.sleep(0.3)
+                    
+                    if "laws" in info:
+                        speak(f"Laws: {info['laws']}")
+                        time.sleep(0.3)
+                    
+                    if "helpline" in info:
+                        speak(f"Helpline: {info['helpline']}")
+                        time.sleep(0.3)
+                    
+                    if "violations" in info:
+                        speak(f"Violations: {info['violations']}")
+                    
+                    if "how_to_complain" in info:
+                        speak(f"How to complain: {info['how_to_complain']}")
+                
+                return True
+        
+        # If not found, search online
+        if language == "hindi":
+            speak(f"{right_or_law} के बारे में खोज रहे हैं", language="hindi")
+        else:
+            speak(f"Searching for information about {right_or_law}")
+        
+        return search_legal_info_online(right_or_law, language)
+        
+    except Exception as e:
+        print(f"Legal info error: {e}")
+        if language == "hindi":
+            speak("कानूनी जानकारी प्राप्त नहीं हो सकी", language="hindi")
+        else:
+            speak("Could not retrieve legal information")
+        return False
+
+
+def search_legal_info_online(query, language="en"):
+    """
+    Search legal information online using AI
+    """
+    try:
+        model = genai.GenerativeModel('models/gemini-2.5-flash')
+        
+        if language == "hindi":
+            prompt = f"""भारतीय कानून के अनुसार "{query}" के बारे में संक्षिप्त जानकारी दें:
+
+1. यह अधिकार/कानून क्या है? (2-3 लाइन)
+2. संबंधित अनुच्छेद/कानून (यदि लागू हो)
+3. इसका मतलब सरल शब्दों में (2-3 लाइन)
+4. संबंधित हेल्पलाइन या शिकायत कैसे करें (यदि लागू हो)
+
+कुल 200 शब्दों से कम में उत्तर दें।
+
+नोट: यह सामान्य जानकारी है। कानूनी सलाह के लिए वकील से परामर्श करें।"""
+        else:
+            prompt = f"""Provide brief information about "{query}" according to Indian law:
+
+1. What is this right/law? (2-3 lines)
+2. Related articles/acts (if applicable)
+3. What it means in simple terms (2-3 lines)
+4. Related helplines or how to complain (if applicable)
+
+Keep response under 200 words.
+
+Note: This is general information. Consult a lawyer for legal advice."""
+
+        response = model.generate_content(prompt)
+        info_text = response.text.strip()
+        
+        # Speak in chunks
+        sentences = info_text.split('.')
+        for sentence in sentences:
+            if sentence.strip():
+                if language == "hindi":
+                    speak(sentence.strip(), language="hindi")
+                else:
+                    speak(sentence.strip())
+                time.sleep(0.3)
+        
+        return True
+        
+    except Exception as e:
+        print(f"Online legal search error: {e}")
+        return False
+
+
+def list_emergency_numbers(language="en"):
+    """
+    List all emergency helpline numbers
+    """
+    try:
+        lang_code = "hi" if language == "hindi" else "en"
+        numbers = EMERGENCY_CONTACTS[lang_code]
+        
+        if language == "hindi":
+            speak("आपातकालीन नंबर:", language="hindi")
+            time.sleep(0.3)
+            
+            for service, number in numbers.items():
+                speak(number, language="hindi")
+                time.sleep(0.5)
+        else:
+            speak("Emergency helpline numbers:")
+            time.sleep(0.3)
+            
+            speak(f"Police: {numbers['police']}")
+            time.sleep(0.3)
+            speak(f"Ambulance: {numbers['ambulance']}")
+            time.sleep(0.3)
+            speak(f"Fire: {numbers['fire']}")
+            time.sleep(0.3)
+            speak(f"Women Helpline: {numbers['women_helpline']}")
+            time.sleep(0.3)
+            speak(f"Child Helpline: {numbers['child_helpline']}")
+            time.sleep(0.3)
+            speak(f"National Emergency Number: {numbers['national_helpline']}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"Emergency numbers error: {e}")
+        speak("Could not retrieve emergency numbers")
+        return False
+
+
+def get_first_aid_info(emergency_type, language="en"):
+    """
+    Get first aid instructions for emergencies
+    """
+    try:
+        model = genai.GenerativeModel('models/gemini-2.5-flash')
+        
+        if language == "hindi":
+            prompt = f""""{emergency_type}" के लिए प्राथमिक चिकित्सा निर्देश दें:
+
+1. तुरंत क्या करें (3-4 स्टेप्स)
+2. क्या नहीं करना चाहिए (2-3 पॉइंट्स)
+3. कब तुरंत डॉक्टर बुलाएं
+
+सरल हिंदी में, स्पष्ट स्टेप्स में लिखें। कुल 150 शब्दों में।
+
+चेतावनी: यह सामान्य जानकारी है। गंभीर स्थिति में तुरंत 102 या 108 पर कॉल करें।"""
+        else:
+            prompt = f"""Provide first aid instructions for "{emergency_type}":
+
+1. What to do immediately (3-4 steps)
+2. What NOT to do (2-3 points)
+3. When to call emergency services immediately
+
+Write in simple language with clear steps. Keep under 150 words.
+
+WARNING: This is general information. In serious emergencies, call 102 or 108 immediately."""
+
+        response = model.generate_content(prompt)
+        instructions = response.text.strip()
+        
+        # Speak in sections
+        sections = instructions.split('\n')
+        for section in sections:
+            if section.strip():
+                if language == "hindi":
+                    speak(section.strip(), language="hindi")
+                else:
+                    speak(section.strip())
+                time.sleep(0.4)
+        
+        return True
+        
+    except Exception as e:
+        print(f"First aid info error: {e}")
+        if language == "hindi":
+            speak("प्राथमिक चिकित्सा जानकारी प्राप्त नहीं हो सकी", language="hindi")
+        else:
+            speak("Could not retrieve first aid information")
+        return False
 
 
 def get_entertainment_news():
     """Get entertainment news"""
     return get_news_from_api(category="entertainment", country="in")
-
-
 @eel.expose
 def allCommands(message=1):
-    """Main command processor"""
-    global CURRENT_LANGUAGE, CURRENT_LANG_CODE
+    """Main command processor with auto-continue listening"""
+    global CURRENT_LANGUAGE, CURRENT_LANG_CODE, AUTO_LISTEN_MODE, LISTENING_ACTIVE
     
     if message == 1:
         query = takecommand()
@@ -2553,9 +3263,37 @@ def allCommands(message=1):
         eel.senderText(query)
     
     if not query or not query.strip():
+        if AUTO_LISTEN_MODE:
+            print("No query detected, continuing to listen...")
+            allCommands()
         return
     
     try:
+        if any(phrase in query.lower() for phrase in ["stop speaking", "stop talking", "be quiet", "shut up", "stop it", "silence"]):
+            SPEECH_INTERRUPTED = True
+            print("Stop command detected - interrupting speech")
+            try:
+                pygame.mixer.music.stop()
+                pygame.mixer.music.unload()
+            except:
+                pass
+            time.sleep(0.3)
+            speak("Stopped")
+            if AUTO_LISTEN_MODE:
+                allCommands()
+            return
+        
+        elif "stop listening" in query or "stop auto listen" in query or "sleep mode" in query:
+            AUTO_LISTEN_MODE = False
+            speak("Auto listening disabled. Say IRA or click the mic button to activate me.")
+            eel.ShowHood()
+            return
+        
+        elif "start listening" in query or "start auto listen" in query or "wake up" in query:
+            AUTO_LISTEN_MODE = True
+            speak("Auto listening enabled. I'll keep listening after each command.")
+            allCommands()
+            return
         # Language commands
         if "change language" in query or "switch language" in query:
             speak("Which language would you like?")
@@ -2584,7 +3322,37 @@ def allCommands(message=1):
                     translated = translate_text(text_to_translate, target_lang)
                     speak(f"Translation: {translated}", language=lang_name)
                     return
-        
+        elif "medical" in query or "health" in query or "disease" in query or "बीमारी" in query or "स्वास्थ्य" in query:
+            if "about" in query or "information" in query or "ke baare mein" in query or "जानकारी" in query:
+                # Extract condition
+                condition = query
+                for phrase in ["medical information about", "health information about", 
+                              "tell me about", "information about", "ke baare mein", "जानकारी"]:
+                    condition = condition.replace(phrase, "")
+                condition = condition.strip()
+                
+                # Detect language
+                lang = "hindi" if any(hindi_word in query for hindi_word in ["बीमारी", "स्वास्थ्य", "जानकारी"]) else "english"
+                
+                if condition:
+                    get_medical_info(condition, language=lang)
+                else:
+                    if lang == "hindi":
+                        speak("किस बीमारी के बारे में जानकारी चाहिए?", language="hindi")
+                    else:
+                        speak("What condition would you like information about?")
+                    condition = takecommand()
+                    if condition:
+                        get_medical_info(condition, language=lang)
+            else:
+                speak("Please specify what medical information you need")
+        elif "start continuous listening" in query or "always listen" in query:
+           start_continuous_listening()
+           speak("Continuous listening activated. I'm always listening now.")
+
+        elif "stop continuous listening" in query or "stop always listening" in query:
+          stop_continuous_listening()
+          speak("Continuous listening stopped. Say IRA to activate me.")
         # System commands
         elif "open" in query or "launch" in query or "start" in query:
             from engine.features import openCommand
@@ -2739,33 +3507,8 @@ def allCommands(message=1):
             speak("Hello! I am IRA, an intelligent voice assistant created by Ankita, Anjali, Shubham and Amrita. I can help you with many tasks like checking weather, managing files, controlling your system, and much more. Just ask me anything!")
 
         elif "what is unique" in query or "what makes you different" in query or "what makes you special" in query or "your uniqueness" in query or "why choose you" in query or "your specialty" in query:
-         
-           # Speak in smaller chunks for better clarity
-            speak("Let me tell you what makes me truly special and different from other assistants.")
-            time.sleep(0.2)
-    
-            speak("First, I am truly multilingual. I speak over 27 languages including English, Hindi, Spanish, French, German, Tamil, Telugu, Bengali, Arabic, Chinese, Japanese, Korean, and many more. You can switch between any language anytime.")
-            time.sleep(0.2)
-    
-            speak("I offer comprehensive system control. I manage Wi-Fi, reveal passwords, monitor disk usage, check CPU and RAM, control brightness and volume, capture screenshots, and safely control your PC operations.")
-            time.sleep(0.2)
-    
-            speak("My file management is exceptional. I read text, PDF, and Word documents in English and Hindi. Just say the file name - I'll find it automatically in your common folders.")
-            time.sleep(0.2)
-    
-            speak("I have artificial intelligence for creative tasks. I generate images from descriptions, create professional PowerPoint presentations with custom themes, and write complete code in multiple programming languages.")
-            time.sleep(0.2)
-    
-            speak("I keep you updated with latest news in English and Hindi from reliable sources. I search specific topics and provide business, sports, technology, and entertainment updates.")
-            time.sleep(0.2)
-    
-            speak("I offer practical utilities like weather forecasts, Wikipedia searches, internet speed tests, battery monitoring, and system diagnostics. I also manage tasks, set reminders, and take notes.")
-            time.sleep(0.2)
-    
-            speak("What truly sets me apart is my voice-first design in your preferred language. Just say IRA and I start listening. I translate between languages and adapt to you automatically.")
-            time.sleep(0.2)
-    
-            speak("I was created by Ankita, Anjali, Shubham, and Amrita to make technology accessible to everyone. I'm your personal productivity partner, system administrator, creative collaborator, and information companion, all in one, speaking your language.")
+                        unique_features = """What makes me truly unique? I speak 27 plus languages fluently, including all major Indian languages. I can read files just by their name, no path needed. I generate images, create presentations, and write complete code in any language. I reveal WiFi passwords, control your entire system, and provide news in both English and Hindi. Most importantly, I keep listening automatically, so you never have to activate me repeatedly. Just say IRA once, and I'm always ready to help in your preferred language."""
+                        speak(unique_features)
         elif "read file" in query or "read text" in query or "फ़ाइल पढ़ो" in query:
             speak("What is the file name?")
             filename = takecommand()
@@ -2996,7 +3739,12 @@ def allCommands(message=1):
         print(f"Error: {e}")
         speak("Sorry, I encountered an error")
     
-    eel.ShowHood()
+    if AUTO_LISTEN_MODE:
+        print("\n🔄 Ready for next command...")
+        time.sleep(0.3)  # Brief pause
+        allCommands()  # This keeps siriwave active and continues listening
+    else:
+        eel.ShowHood()
 
 @eel.expose
 def stop_speech():
@@ -3011,31 +3759,36 @@ def stop_speech():
         pass
     speak("Stopped")
 def hotword_listener():
-    """Listen for wake word 'IRA'"""
+    """Listen for wake word 'IRA' and auto-start listening"""
+    global AUTO_LISTEN_MODE
+    
     r = sr.Recognizer()
+    r.energy_threshold = 3000
+    r.dynamic_energy_threshold = True
+    r.pause_threshold = 0.6
+    
     with sr.Microphone() as source:
-        print("Listening for 'IRA'...")
-        r.adjust_for_ambient_noise(source, duration=0.5)
+        print("👂 Listening for 'IRA'...")
+        r.adjust_for_ambient_noise(source, duration=0.3)
         
         try:
-            audio = r.listen(source, timeout=None, phrase_time_limit=3)
+            audio = r.listen(source, timeout=None, phrase_time_limit=2)
             query = r.recognize_google(audio, language='en-in').lower()
-            print(f"Heard: {query}")
             
             if "ira" in query:
-                print("✓ Wake word detected!")
+                print("✅ Wake word detected!")
+                AUTO_LISTEN_MODE = True
                 speak("Yes, how can I help?")
                 allCommands()
                 
         except sr.UnknownValueError:
-            # Couldn't understand audio - this is normal, just continue
             pass
         except sr.RequestError as e:
-            print(f"Speech recognition service error: {e}")
+            print(f"Service error: {e}")
             time.sleep(2)
         except Exception as e:
             print(f"Hotword error: {e}")
-            time.sleep(1)
+            time.sleep(0.5)
 
 def start_hotword_thread():
     """Run hotword detection in background"""
@@ -3046,24 +3799,28 @@ def start_hotword_thread():
             print(f"Hotword thread error: {e}")
             time.sleep(1)
 
-
 def initialize():
-    """Initialize the assistant"""
-    print("Initializing Multi-Language Voice Assistant...")
-    print("\n=== INTERRUPT METHOD ===")
-    print("Press SPACE key anytime to stop speaking")
-    print("========================\n")
-    speak("Voice assistant initialized and ready")
-    print(f"Current language: {CURRENT_LANGUAGE}")
-    print("Say 'IRA' to activate voice commands")
+    """Initialize the assistant with auto-listen mode"""
+    global AUTO_LISTEN_MODE
     
-    # Start reminder checker thread
+    print("Initializing Multi-Language Voice Assistant...")
+    print("\n=== AUTO-LISTEN MODE ===")
+    print("✅ Enabled - I'll keep listening after each command")
+    print("Say 'stop listening' to disable")
+    print("Say 'start listening' to enable")
+    print("Press SPACE key to interrupt speech")
+    print("========================\n")
+    
+    speak("Voice assistant initialized with auto listening enabled")
+    print(f"Current language: {CURRENT_LANGUAGE}")
+    
     reminder_thread = threading.Thread(target=reminder_checker, daemon=True)
     reminder_thread.start()
     
-    # Start hotword listener thread
     hotword_thread = threading.Thread(target=start_hotword_thread, daemon=True)
     hotword_thread.start()
+    
+    print("\n✅ Ready! Say 'IRA' to start or click the mic button.")
 
 
 if __name__ == "__main__":

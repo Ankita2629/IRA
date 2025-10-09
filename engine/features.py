@@ -82,7 +82,6 @@ def PlayYoutube(query):
         print(f"YouTube error: {e}")
         speak("Could not play on YouTube")
 
-
 def hotword():
     """Listen for wake word (IRA/Alexa)"""
     porcupine = None
@@ -90,17 +89,12 @@ def hotword():
     audio_stream = None
     
     try:
-        # Pre-trained keywords    
-        porcupine = pvporcupine.create(keywords=["ira", "alexa"]) 
-        paud = pyaudio.PyAudio()
-        audio_stream = paud.open(
-            rate=porcupine.sample_rate,
-            channels=1,
-            format=pyaudio.paInt16,
-            input=True,
-            frames_per_buffer=porcupine.frame_length
+        # Custom and default keyword
+        porcupine = pvporcupine.create(
+            access_key="K0DUIHSYae4NMEKAwQv0p94OAvAH8MNvKdebIuZi0lEq+vsUobC5Gg==",  # from console.picovoice.ai
+            keyword_paths=[r"C:\Users\ankit\Desktop\IRA\wake-up-ira_en_windows_v3_0_0.ppn"],
+            keywords=["wake up ira"]
         )
-        
         # Loop for streaming
         while True:
             keyword = audio_stream.read(porcupine.frame_length)
