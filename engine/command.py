@@ -1244,141 +1244,69 @@ def read_text_file_smart(filename, language="english"):
         return False
 
 
-def read_pdf_file_smart(filename, start_page=0, end_page=None, language="english"):
-    """Read PDF file by searching with filename only"""
+def run_generated_code(filename, language):
+    """
+    FIXED: Execute the generated code safely with proper error handling
+    """
     try:
-        import PyPDF2
+        speak(f"Running your {language} code now.")
         
-        file_path = find_file_by_name(filename, language)
-        
-        if not file_path:
-            return False
-        
-        print(f"\nReading PDF: {file_path}")
-        
-        with open(file_path, "rb") as f:
-            reader = PyPDF2.PdfReader(f)
-            num_pages = len(reader.pages)
+        if language == "Python":
+            # FIXED: Use absolute path and proper Python interpreter
+            result = subprocess.run(
+                ['python', str(filename)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=str(Path(filename).parent)  # Set working directory
+            )
             
-            if end_page is None or end_page > num_pages:
-                end_page = num_pages
-            
-            if start_page < 0 or start_page >= num_pages:
-                if language == "hindi":
-                    speak("गलत पेज नंबर", language="hindi")
+            if result.returncode == 0:
+                speak("Code executed successfully!")
+                if result.stdout:
+                    print(f"\n=== OUTPUT ===\n{result.stdout}")
+                    # Speak first 100 characters of output
+                    output_preview = result.stdout[:100]
+                    speak(f"Output: {output_preview}")
+            else:
+                speak("There was an error running the code.")
+                print(f"\n=== ERROR ===\n{result.stderr}")
+                # Speak the error
+                error_msg = result.stderr.split('\n')[-2] if result.stderr else "Unknown error"
+                speak(f"Error: {error_msg[:100]}")
+                
+        elif language == "JavaScript":
+            try:
+                result = subprocess.run(
+                    ['node', str(filename)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    cwd=str(Path(filename).parent)
+                )
+                if result.returncode == 0:
+                    speak("JavaScript code executed successfully!")
+                    if result.stdout:
+                        print(f"\n=== OUTPUT ===\n{result.stdout}")
+                        speak(f"Output: {result.stdout[:100]}")
                 else:
-                    speak("Invalid page number")
-                return False
+                    speak("Error running JavaScript code.")
+                    print(f"\n=== ERROR ===\n{result.stderr}")
+            except FileNotFoundError:
+                speak("Node.js is not installed. Please install it to run JavaScript code.")
+                print("Install Node.js from: https://nodejs.org/")
+                
+        else:
+            speak(f"{language} code saved. Please compile and run it manually from VS Code.")
             
-            if language == "hindi":
-                speak(f"पीडीएफ पढ़ी जा रही है। कुल {num_pages} पेज हैं", language="hindi")
-            else:
-                speak(f"Reading PDF. Total {num_pages} pages")
-            
-            for i in range(start_page, end_page):
-                try:
-                    text = reader.pages[i].extract_text()
-                    
-                    if text and text.strip():
-                        if language == "hindi":
-                            speak(f"पेज {i+1}", language="hindi")
-                        else:
-                            speak(f"Page {i+1}")
-                        
-                        chunks = [text[j:j+2000] for j in range(0, len(text), 2000)]
-                        
-                        for chunk in chunks:
-                            if language == "hindi":
-                                speak(chunk, language="hindi")
-                            else:
-                                speak(chunk)
-                            time.sleep(0.3)
-                    else:
-                        if language == "hindi":
-                            speak(f"पेज {i+1} खाली है", language="hindi")
-                        else:
-                            speak(f"Page {i+1} is empty")
-                            
-                except Exception as e:
-                    print(f"Error on page {i+1}: {e}")
-                    continue
-            
-            if language == "hindi":
-                speak("पीडीएफ पढ़ना पूरा हुआ", language="hindi")
-            else:
-                speak("Finished reading PDF")
-            return True
-            
-    except ImportError:
-        speak("PyPDF2 is not installed. Please run: pip install PyPDF2")
-        return False
+    except subprocess.TimeoutExpired:
+        speak("Code execution timed out. It may be waiting for input or taking too long.")
     except Exception as e:
-        print(f"PDF read error: {e}")
-        if language == "hindi":
-            speak("पीडीएफ नहीं पढ़ी जा सकी", language="hindi")
-        else:
-            speak("Could not read PDF")
-        return False
+        print(f"Run error: {e}")
+        import traceback
+        traceback.print_exc()
+        speak("Could not run the code. Check console for details.")
 
-
-def read_word_document_smart(filename, language="english"):
-    """Read Word document by searching with filename only"""
-    try:
-        import docx
-        
-        file_path = find_file_by_name(filename, language)
-        
-        if not file_path:
-            return False
-        
-        print(f"\nReading Word document: {file_path}")
-        
-        doc = docx.Document(file_path)
-        
-        if language == "hindi":
-            speak("वर्ड डॉक्यूमेंट पढ़ा जा रहा है", language="hindi")
-        else:
-            speak("Reading Word document")
-        
-        full_text = []
-        for para in doc.paragraphs:
-            if para.text.strip():
-                full_text.append(para.text)
-        
-        content = "\n".join(full_text)
-        
-        if content:
-            chunks = [content[i:i+2000] for i in range(0, len(content), 2000)]
-            
-            for chunk in chunks:
-                if language == "hindi":
-                    speak(chunk, language="hindi")
-                else:
-                    speak(chunk)
-                time.sleep(0.3)
-            
-            if language == "hindi":
-                speak("डॉक्यूमेंट पढ़ना पूरा हुआ", language="hindi")
-            else:
-                speak("Finished reading document")
-            return True
-        else:
-            if language == "hindi":
-                speak("डॉक्यूमेंट खाली है", language="hindi")
-            else:
-                speak("Document is empty")
-            return False
-            
-    except ImportError:
-        speak("python-docx is not installed. Please run: pip install python-docx")
-        return False
-    except Exception as e:
-        print(f"Word read error: {e}")
-        if language == "hindi":
-            speak("वर्ड फ़ाइल नहीं पढ़ी जा सकी", language="hindi")
-        else:
-            speak("Could not read Word document")
-        return False
 
 
 STABILITY_API_KEY = None 
@@ -1714,7 +1642,9 @@ genai.configure(api_key=GEMINI_API_KEY)
 
 
 def generate_ppt_content_with_ai(topic, num_slides=7):
-    """Generate PowerPoint content using Gemini AI"""
+    """
+    FIXED: Generate clean content without star symbols
+    """
     try:
         speak(f"Generating content for presentation on {topic}")
 
@@ -1722,70 +1652,302 @@ def generate_ppt_content_with_ai(topic, num_slides=7):
 
         prompt = f"""
         Create a PowerPoint presentation outline on "{topic}" with exactly {num_slides} slides.
-        Return ONLY valid JSON in this exact format (no markdown, no code blocks):
+        
+        IMPORTANT RULES:
+        1. NO star symbols (*) anywhere
+        2. NO special characters or symbols
+        3. Use plain text only
+        4. Each bullet point should be 10-15 words maximum
+        5. No markdown formatting
+        
+        Return ONLY valid JSON in this exact format:
 
         {{
             "title": "Main Presentation Title",
-            "subtitle": "Engaging subtitle or tagline",
+            "subtitle": "Engaging subtitle",
             "slides": [
                 {{
-                    "title": "Slide 1 Title",
-                    "content": ["Bullet point 1", "Bullet point 2", "Bullet point 3"],
-                    "image_keyword": "simple",
+                    "title": "Introduction",
+                    "content": [
+                        "First clear point without symbols",
+                        "Second informative point",
+                        "Third relevant point"
+                    ],
+                    "image_keyword": "business",
                     "bg_color": "light"
                 }},
                 {{
-                    "title": "Slide 2 Title",
-                    "content": ["Point 1", "Point 2", "Point 3"],
-                    "image_keyword": "education",
+                    "title": "Key Points",
+                    "content": [
+                        "Important detail one",
+                        "Important detail two",
+                        "Important detail three"
+                    ],
+                    "image_keyword": "technology",
                     "bg_color": "gradient"
                 }}
             ]
         }}
+        
         Requirements:
-        - First slide: Title slide with {topic}
-        - Middle slides: 3–5 informative bullet points each
+        - First slide: Title slide
+        - Middle slides: 3-4 SHORT bullet points each (max 15 words per point)
         - Last slide: Conclusion or Thank You
-        - Each slide needs "image_keyword" (one simple word)
-        - Make content professional, detailed, and engaging
+        - Each slide needs "image_keyword" (one simple word like: business, people, technology, success, education, team, innovation, data, growth, future)
+        - bg_color options: light, dark, gradient
+        - NO stars, NO special symbols, PLAIN TEXT ONLY
         """
 
         response = model.generate_content(prompt)
         content_text = response.text.strip()
 
-        # Clean markdown fences if present
+        # Clean markdown and special characters
         content_text = content_text.replace('```json', '').replace('```', '').strip()
+        content_text = content_text.replace('*', '').replace('#', '')  # Remove stars and hashes
 
         try:
             content_data = json.loads(content_text)
-            print(f"✓ Generated content with {len(content_data.get('slides', []))} slides")
+            
+            # FIXED: Clean all text content of stars and symbols
+            for slide in content_data.get('slides', []):
+                slide['title'] = slide['title'].replace('*', '').replace('#', '').strip()
+                slide['content'] = [point.replace('*', '').replace('#', '').strip() 
+                                   for point in slide['content']]
+            
+            print(f"✓ Generated clean content with {len(content_data.get('slides', []))} slides")
             return content_data
 
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            print(f"JSON parsing error: {e}")
+            # Try to extract JSON
             json_match = re.search(r'\{[\s\S]*\}', content_text)
             if json_match:
                 content_data = json.loads(json_match.group())
+                # Clean stars from extracted JSON too
+                for slide in content_data.get('slides', []):
+                    slide['title'] = slide['title'].replace('*', '').strip()
+                    slide['content'] = [point.replace('*', '').strip() for point in slide['content']]
                 return content_data
             raise
 
     except Exception as e:
         print(f"AI content generation error: {e}")
+        import traceback
+        traceback.print_exc()
         speak("Using template content for presentation")
 
+        # FIXED: Template without stars
         return {
             "title": topic.title(),
             "subtitle": "A Comprehensive Overview",
             "slides": [
-                {"title": topic.title(), "content": [f"Comprehensive overview", "Key insights", "Practical applications"], "image_keyword": "business", "bg_color": "gradient"},
-                {"title": "Introduction", "content": ["Background and context", "Scope of discussion", "Importance"], "image_keyword": "people", "bg_color": "light"},
-                {"title": "Key Concepts", "content": ["Core principles", "Fundamental theories", "Essential frameworks"], "image_keyword": "idea", "bg_color": "light"},
-                {"title": "Analysis", "content": ["Data-driven findings", "Expert perspectives", "Key takeaways"], "image_keyword": "data", "bg_color": "dark"},
-                {"title": "Applications", "content": ["Real-world examples", "Practical uses", "Implementation"], "image_keyword": "technology", "bg_color": "light"},
-                {"title": "Conclusion", "content": ["Summary of points", "Main takeaways", "Recommendations"], "image_keyword": "success", "bg_color": "gradient"},
-                {"title": "Thank You", "content": ["Questions & Discussion"], "image_keyword": "team", "bg_color": "gradient"}
+                {"title": topic.title(), 
+                 "content": ["Comprehensive overview", "Key insights", "Practical applications"], 
+                 "image_keyword": "business", "bg_color": "gradient"},
+                {"title": "Introduction", 
+                 "content": ["Background and context", "Scope of discussion", "Importance and relevance"], 
+                 "image_keyword": "people", "bg_color": "light"},
+                {"title": "Key Concepts", 
+                 "content": ["Core principles explained", "Fundamental theories", "Essential frameworks"], 
+                 "image_keyword": "idea", "bg_color": "light"},
+                {"title": "Analysis", 
+                 "content": ["Data driven findings", "Expert perspectives", "Key takeaways"], 
+                 "image_keyword": "data", "bg_color": "dark"},
+                {"title": "Applications", 
+                 "content": ["Real world examples", "Practical use cases", "Implementation strategies"], 
+                 "image_keyword": "technology", "bg_color": "light"},
+                {"title": "Conclusion", 
+                 "content": ["Summary of main points", "Important takeaways", "Future recommendations"], 
+                 "image_keyword": "success", "bg_color": "gradient"},
+                {"title": "Thank You", 
+                 "content": ["Questions and Discussion"], 
+                 "image_keyword": "team", "bg_color": "gradient"}
             ][:num_slides]
         }
 
+
+def create_enhanced_ppt(topic, num_slides=7, theme="modern"):
+    """
+    FIXED: Create PowerPoint with working images and no text overflow
+    """
+    try:
+        print(f"\n{'='*60}")
+        print(f"🎨 CREATING ENHANCED PRESENTATION")
+        print(f"📋 Topic: {topic}")
+        print(f"📊 Slides: {num_slides}")
+        print(f"🎭 Theme: {theme}")
+        print(f"{'='*60}\n")
+
+        content_data = generate_ppt_content_with_ai(topic, num_slides)
+        if not content_data or 'slides' not in content_data:
+            speak("Failed to generate content properly")
+            return False
+
+        prs = Presentation()
+        prs.slide_width = Inches(10)
+        prs.slide_height = Inches(7.5)
+
+        themes = {
+            "professional": {
+                "title_color": RGBColor(0, 51, 102),
+                "text_color": RGBColor(51, 51, 51),
+                "accent": RGBColor(0, 112, 192),
+                "gradient": "blue"
+            },
+            "modern": {
+                "title_color": RGBColor(75, 0, 130),
+                "text_color": RGBColor(60, 60, 60),
+                "accent": RGBColor(138, 43, 226),
+                "gradient": "purple"
+            },
+            "vibrant": {
+                "title_color": RGBColor(200, 50, 40),
+                "text_color": RGBColor(51, 51, 51),
+                "accent": RGBColor(255, 100, 50),
+                "gradient": "orange"
+            },
+            "dark": {
+                "title_color": RGBColor(255, 255, 255),
+                "text_color": RGBColor(220, 220, 220),
+                "accent": RGBColor(100, 200, 255),
+                "gradient": "dark"
+            }
+        }
+
+        colors = themes.get(theme, themes["modern"])
+        slides_data = content_data.get('slides', [])
+        main_title = content_data.get('title', topic.title()).replace('*', '')
+        subtitle = content_data.get('subtitle', f"Created by IRA • {datetime.datetime.now().strftime('%B %d, %Y')}").replace('*', '')
+
+        # TITLE SLIDE
+        blank_layout = prs.slide_layouts[6]
+        title_slide = prs.slides.add_slide(blank_layout)
+        add_gradient_background(title_slide, colors["gradient"])
+
+        # Title
+        title_box = title_slide.shapes.add_textbox(Inches(0.5), Inches(2.5), Inches(9), Inches(1.5))
+        title_frame = title_box.text_frame
+        title_frame.text = main_title
+        title_frame.word_wrap = True
+        title_frame.paragraphs[0].font.size = Pt(48)
+        title_frame.paragraphs[0].font.bold = True
+        title_frame.paragraphs[0].font.color.rgb = RGBColor(255, 255, 255)
+        title_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
+
+        # Subtitle
+        subtitle_box = title_slide.shapes.add_textbox(Inches(0.5), Inches(4.5), Inches(9), Inches(1))
+        subtitle_frame = subtitle_box.text_frame
+        subtitle_frame.text = subtitle
+        subtitle_frame.word_wrap = True
+        subtitle_frame.paragraphs[0].font.size = Pt(20)
+        subtitle_frame.paragraphs[0].font.color.rgb = RGBColor(255, 255, 255)
+        subtitle_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
+
+        # CONTENT SLIDES with IMAGES
+        for idx, slide_data in enumerate(slides_data[1:], 1):
+            print(f"\n📄 Creating slide {idx + 1}/{len(slides_data)}...")
+            slide = prs.slides.add_slide(blank_layout)
+            slide_title = slide_data.get('title', f'Slide {idx + 1}').replace('*', '')
+            content_points = [point.replace('*', '').strip() for point in slide_data.get('content', [])]
+            image_keyword = slide_data.get('image_keyword', 'business')
+            bg_style = slide_data.get('bg_color', 'light')
+
+            # Background
+            if bg_style == "gradient":
+                add_gradient_background(slide, colors["gradient"])
+                text_color = RGBColor(255, 255, 255)
+                title_color = RGBColor(255, 255, 255)
+            elif bg_style == "dark":
+                add_solid_background(slide, (35, 35, 45))
+                text_color = RGBColor(240, 240, 240)
+                title_color = RGBColor(255, 255, 255)
+            else:
+                add_solid_background(slide, (250, 250, 255))
+                text_color = colors["text_color"]
+                title_color = colors["title_color"]
+
+            # FIXED: Add image with proper positioning
+            try:
+                print(f"  📷 Downloading image for: {image_keyword}")
+                image_path = download_image_multi_source(image_keyword, width=800, height=600)
+                
+                if image_path and image_path.exists():
+                    # Add image on right side
+                    left = Inches(5.5)
+                    top = Inches(2)
+                    width = Inches(4)
+                    height = Inches(4.5)
+                    
+                    pic = slide.shapes.add_picture(str(image_path), left, top, width=width, height=height)
+                    print(f"  ✅ Image added successfully")
+                    
+                    # Delete temporary image
+                    try:
+                        image_path.unlink()
+                    except:
+                        pass
+                else:
+                    print(f"  ⚠️ Could not download image for {image_keyword}")
+            except Exception as img_error:
+                print(f"  ❌ Image error: {img_error}")
+
+            # Accent bar
+            accent_bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.5), Inches(0.8), Inches(0.15), Inches(0.6))
+            accent_bar.fill.solid()
+            accent_bar.fill.fore_color.rgb = colors["accent"]
+            accent_bar.line.fill.background()
+
+            # FIXED: Title with proper width to avoid overlap
+            title_box = slide.shapes.add_textbox(Inches(0.8), Inches(0.8), Inches(4.5), Inches(0.8))
+            title_frame = title_box.text_frame
+            title_frame.text = slide_title
+            title_frame.word_wrap = True
+            title_frame.paragraphs[0].font.size = Pt(32)
+            title_frame.paragraphs[0].font.bold = True
+            title_frame.paragraphs[0].font.color.rgb = title_color
+
+            # FIXED: Content with proper width and wrapping
+            content_box = slide.shapes.add_textbox(Inches(0.8), Inches(2), Inches(4.5), Inches(5))
+            text_frame = content_box.text_frame
+            text_frame.word_wrap = True
+
+            for point in content_points:
+                # Remove any remaining stars
+                clean_point = point.replace('*', '').strip()
+                if not clean_point:
+                    continue
+                    
+                p = text_frame.add_paragraph()
+                p.text = f"• {clean_point}"
+                p.font.size = Pt(16)  # Reduced from 20 to fit better
+                p.font.color.rgb = text_color
+                p.space_before = Pt(8)
+                p.space_after = Pt(8)
+                p.line_spacing = 1.2
+                p.level = 0
+
+        # Save presentation
+        ppt_folder = Path.home() / "Documents" / "IRA_Presentations"
+        ppt_folder.mkdir(parents=True, exist_ok=True)
+        filename = ppt_folder / f"{topic}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.pptx"
+        prs.save(str(filename))
+
+        speak(f"Presentation on {topic} created successfully with {len(prs.slides)} slides and images")
+        print(f"✅ Saved: {filename}")
+
+        try:
+            os.startfile(str(filename))
+        except Exception:
+            pass
+
+        return True
+
+    except Exception as e:
+        print(f"Create PPT error: {e}")
+        import traceback
+        traceback.print_exc()
+        speak("Sorry, I encountered an error creating the presentation.")
+        return False
 
 def download_image_multi_source(keyword, width=1200, height=800):
     """Download images from multiple free sources with fallbacks"""
@@ -1857,152 +2019,6 @@ def add_solid_background(slide, color_rgb):
         pass
 
 
-def create_enhanced_ppt(topic, num_slides=7, theme="modern"):
-    """Create visually enhanced PowerPoint with AI content"""
-    try:
-        print(f"\n{'='*60}")
-        print(f"🎨 CREATING ENHANCED PRESENTATION")
-        print(f"📋 Topic: {topic}")
-        print(f"📊 Slides: {num_slides}")
-        print(f"🎭 Theme: {theme}")
-        print(f"{'='*60}\n")
-
-        content_data = generate_ppt_content_with_ai(topic, num_slides)
-        if not content_data or 'slides' not in content_data:
-            speak("Failed to generate content properly")
-            return False
-
-        prs = Presentation()
-        prs.slide_width = Inches(10)
-        prs.slide_height = Inches(7.5)
-
-        themes = {
-            "professional": {
-                "title_color": RGBColor(0, 51, 102),
-                "text_color": RGBColor(51, 51, 51),
-                "accent": RGBColor(0, 112, 192),
-                "gradient": "blue"
-            },
-            "modern": {
-                "title_color": RGBColor(75, 0, 130),
-                "text_color": RGBColor(60, 60, 60),
-                "accent": RGBColor(138, 43, 226),
-                "gradient": "purple"
-            },
-            "vibrant": {
-                "title_color": RGBColor(200, 50, 40),
-                "text_color": RGBColor(51, 51, 51),
-                "accent": RGBColor(255, 100, 50),
-                "gradient": "orange"
-            },
-            "dark": {
-                "title_color": RGBColor(255, 255, 255),
-                "text_color": RGBColor(220, 220, 220),
-                "accent": RGBColor(100, 200, 255),
-                "gradient": "dark"
-            }
-        }
-
-        colors = themes.get(theme, themes["modern"])
-        slides_data = content_data.get('slides', [])
-        main_title = content_data.get('title', topic.title())
-        subtitle = content_data.get('subtitle', f"Created by IRA • {datetime.datetime.now().strftime('%B %d, %Y')}")
-
-        # === TITLE SLIDE ===
-        blank_layout = prs.slide_layouts[6]
-        title_slide = prs.slides.add_slide(blank_layout)
-        add_gradient_background(title_slide, colors["gradient"])
-
-        title_box = title_slide.shapes.add_textbox(Inches(0.5), Inches(2.5), Inches(9), Inches(1.5))
-        title_frame = title_box.text_frame
-        title_frame.text = main_title
-        title_frame.paragraphs[0].font.size = Pt(54)
-        title_frame.paragraphs[0].font.bold = True
-        title_frame.paragraphs[0].font.color.rgb = RGBColor(255, 255, 255)
-        title_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
-
-        subtitle_box = title_slide.shapes.add_textbox(Inches(0.5), Inches(4.5), Inches(9), Inches(1))
-        subtitle_frame = subtitle_box.text_frame
-        subtitle_frame.text = subtitle
-        subtitle_frame.paragraphs[0].font.size = Pt(24)
-        subtitle_frame.paragraphs[0].font.color.rgb = RGBColor(255, 255, 255)
-        subtitle_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
-
-        # === CONTENT SLIDES ===
-        for idx, slide_data in enumerate(slides_data[1:], 1):
-            print(f"\n📄 Creating slide {idx + 1}/{len(slides_data)}...")
-            slide = prs.slides.add_slide(blank_layout)
-            slide_title = slide_data.get('title', f'Slide {idx + 1}')
-            content_points = slide_data.get('content', [])
-            image_keyword = slide_data.get('image_keyword', 'business')
-            bg_style = slide_data.get('bg_color', 'light')
-
-            # Background
-            if bg_style == "gradient":
-                add_gradient_background(slide, colors["gradient"])
-                text_color = RGBColor(255, 255, 255)
-                title_color = RGBColor(255, 255, 255)
-            elif bg_style == "dark":
-                add_solid_background(slide, (35, 35, 45))
-                text_color = RGBColor(240, 240, 240)
-                title_color = RGBColor(255, 255, 255)
-            else:
-                add_solid_background(slide, (250, 250, 255))
-                text_color = colors["text_color"]
-                title_color = colors["title_color"]
-
-            # Accent bar
-            accent_bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.5), Inches(0.8), Inches(0.15), Inches(0.6))
-            accent_bar.fill.solid()
-            accent_bar.fill.fore_color.rgb = colors["accent"]
-            accent_bar.line.fill.background()
-
-            # Title
-            title_box = slide.shapes.add_textbox(Inches(0.8), Inches(0.8), Inches(9), Inches(0.6))
-            title_frame = title_box.text_frame
-            title_frame.text = slide_title
-            title_frame.paragraphs[0].font.size = Pt(36)
-            title_frame.paragraphs[0].font.bold = True
-            title_frame.paragraphs[0].font.color.rgb = title_color
-
-            # Content
-            content_box = slide.shapes.add_textbox(Inches(0.8), Inches(2), Inches(8.5), Inches(5))
-            text_frame = content_box.text_frame
-            text_frame.word_wrap = True
-
-            for point in content_points:
-                p = text_frame.add_paragraph()
-                p.text = f"● {point}"
-                p.font.size = Pt(20)
-                p.font.color.rgb = text_color
-                p.space_before = Pt(12)
-                p.space_after = Pt(12)
-                p.line_spacing = 1.3
-
-        # Save presentation
-        ppt_folder = Path.home() / "Documents" / "IRA_Presentations"
-        ppt_folder.mkdir(parents=True, exist_ok=True)
-        filename = ppt_folder / f"{topic}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.pptx"
-        prs.save(str(filename))
-
-        speak(f"Presentation on {topic} created successfully with {len(prs.slides)} slides")
-        print(f"✅ Saved: {filename}")
-
-        try:
-            os.startfile(str(filename))
-        except Exception:
-            pass
-
-        return True
-
-    except Exception as e:
-        print(f"Create PPT error: {e}")
-        import traceback
-        traceback.print_exc()
-        speak("Sorry, I encountered an error creating the presentation.")
-        return False
-
-
 def create_ppt_from_topic(topic, num_slides=7, design_theme="modern"):
     """Wrapper for enhanced PPT creation"""
     return create_enhanced_ppt(topic, num_slides, design_theme)
@@ -2025,6 +2041,44 @@ def generate_code_with_ai(code_description, language_hint=None):
     except Exception as e:
         print(f"Code generation error: {e}")
         return None, None, None
+def extract_number_from_speech(text):
+    """
+    FIXED: Extract numbers from spoken text more reliably
+    """
+    # Direct number mapping for spoken numbers
+    number_words = {
+        'zero': 0, 'one': 1, 'two': 2, 'three': 3, 'four': 4,
+        'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9,
+        'ten': 10, 'eleven': 11, 'twelve': 12, 'thirteen': 13,
+        'fourteen': 14, 'fifteen': 15, 'sixteen': 16, 'seventeen': 17,
+        'eighteen': 18, 'nineteen': 19, 'twenty': 20, 'thirty': 30,
+        'forty': 40, 'fifty': 50, 'sixty': 60, 'seventy': 70,
+        'eighty': 80, 'ninety': 90, 'hundred': 100
+    }
+    
+    text = text.lower().strip()
+    
+    # Try to extract direct digits first
+    digits = ''.join(filter(str.isdigit, text))
+    if digits:
+        return int(digits)
+    
+    # Try word-to-number conversion
+    for word, num in number_words.items():
+        if word in text:
+            return num
+    
+    # Try splitting and combining (e.g., "twenty five" -> 25)
+    words = text.split()
+    total = 0
+    for word in words:
+        if word in number_words:
+            total += number_words[word]
+    
+    if total > 0:
+        return total
+    
+    return None
 
 
 def generate_code_gemini(code_description, language_hint=None):
@@ -2252,35 +2306,36 @@ def open_in_vscode(filepath):
         except:
             return False
 
-
 def run_generated_code(filename, language):
     """
-    Execute the generated code safely
+    FIXED: Execute the generated code safely with proper error handling
     """
     try:
         speak(f"Running your {language} code now.")
         
         if language == "Python":
-            # Run Python code
+            # FIXED: Use absolute path and proper Python interpreter
             result = subprocess.run(
                 ['python', str(filename)],
                 capture_output=True,
                 text=True,
                 timeout=30,
-                cwd=os.path.dirname(filename)
+                cwd=str(Path(filename).parent)  # Set working directory
             )
             
             if result.returncode == 0:
                 speak("Code executed successfully!")
                 if result.stdout:
                     print(f"\n=== OUTPUT ===\n{result.stdout}")
-                    # Optionally speak first line of output
-                    first_line = result.stdout.split('\n')[0][:100]
-                    if first_line:
-                        speak(f"Output: {first_line}")
+                    # Speak first 100 characters of output
+                    output_preview = result.stdout[:100]
+                    speak(f"Output: {output_preview}")
             else:
                 speak("There was an error running the code.")
                 print(f"\n=== ERROR ===\n{result.stderr}")
+                # Speak the error
+                error_msg = result.stderr.split('\n')[-2] if result.stderr else "Unknown error"
+                speak(f"Error: {error_msg[:100]}")
                 
         elif language == "JavaScript":
             try:
@@ -2288,29 +2343,32 @@ def run_generated_code(filename, language):
                     ['node', str(filename)],
                     capture_output=True,
                     text=True,
-                    timeout=30
+                    timeout=30,
+                    cwd=str(Path(filename).parent)
                 )
                 if result.returncode == 0:
                     speak("JavaScript code executed successfully!")
                     if result.stdout:
                         print(f"\n=== OUTPUT ===\n{result.stdout}")
+                        speak(f"Output: {result.stdout[:100]}")
                 else:
                     speak("Error running JavaScript code.")
                     print(f"\n=== ERROR ===\n{result.stderr}")
             except FileNotFoundError:
                 speak("Node.js is not installed. Please install it to run JavaScript code.")
+                print("Install Node.js from: https://nodejs.org/")
                 
-        elif language in ["Java", "C++", "C#"]:
-            speak(f"{language} code needs to be compiled first. Please compile and run it manually from VS Code.")
-            
         else:
-            speak("Please run this code manually from your editor.")
+            speak(f"{language} code saved. Please compile and run it manually from VS Code.")
             
     except subprocess.TimeoutExpired:
-        speak("Code execution timed out. It may be waiting for input or running too long.")
+        speak("Code execution timed out. It may be waiting for input or taking too long.")
     except Exception as e:
         print(f"Run error: {e}")
-        speak("Could not run the code.")
+        import traceback
+        traceback.print_exc()
+        speak("Could not run the code. Check console for details.")
+
 
 
 
