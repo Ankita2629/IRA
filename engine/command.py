@@ -4451,6 +4451,368 @@ WARNING: This is general information. In serious emergencies, call 102 or 108 im
 def get_entertainment_news():
     """Get entertainment news"""
     return get_news_from_api(category="entertainment", country="in")
+
+
+import speech_recognition as sr
+from pathlib import Path
+import datetime
+import time
+import subprocess
+import os
+import pyautogui
+
+def find_word_path():
+    """
+    Find Microsoft Word installation path
+    """
+    possible_paths = [
+        r"C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE",
+        r"C:\Program Files (x86)\Microsoft Office\root\Office16\WINWORD.EXE",
+        r"C:\Program Files\Microsoft Office\Office16\WINWORD.EXE",
+        r"C:\Program Files (x86)\Microsoft Office\Office16\WINWORD.EXE",
+        r"C:\Program Files\Microsoft Office\root\Office15\WINWORD.EXE",
+        r"C:\Program Files (x86)\Microsoft Office\root\Office15\WINWORD.EXE",
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            print(f"Found Word at: {path}")
+            return path
+    
+    return None
+
+
+def open_word_and_type(text):
+    """
+    Type text directly using keyboard automation
+    """
+    try:
+        time.sleep(0.5)
+        pyautogui.write(text + " ", interval=0.01)
+        return True
+    except Exception as e:
+        print(f"Typing error: {e}")
+        return False
+
+
+def dictate_to_word_live():
+    """
+    Open Microsoft Word and write in real-time using keyboard automation
+    Works with any Word version
+    """
+    try:
+        speak("Opening Microsoft Word for live dictation")
+        
+        # Try to find and open Word
+        word_path = find_word_path()
+        
+        if word_path:
+            # Open Word using path
+            subprocess.Popen([word_path])
+            print("Word opened using direct path")
+        else:
+            # Try opening with system command
+            try:
+                os.system("start winword")
+                print("Word opened using system command")
+            except:
+                speak("Could not find Microsoft Word. Please open Word manually and say 'ready'")
+                return False
+        
+        speak("Waiting for Word to open. This will take a few seconds.")
+        time.sleep(5)  # Wait for Word to fully open
+        
+        speak("Click on the Word document where you want to type, then say 'start'")
+        print("\n" + "="*60)
+        print("PREPARATION:")
+        print("1. Word should now be open")
+        print("2. Click inside the document")
+        print("3. Say 'start' to begin dictation")
+        print("="*60)
+        
+        # Wait for user to say "start"
+        r = sr.Recognizer()
+        ready = False
+        
+        for _ in range(5):  # Try 5 times
+            try:
+                with sr.Microphone() as source:
+                    print("Say 'start' when ready...")
+                    r.adjust_for_ambient_noise(source)
+                    audio = r.listen(source, timeout=10)
+                    command = r.recognize_google(audio, language=CURRENT_LANG_CODE)
+                    if "start" in command.lower():
+                        ready = True
+                        break
+            except:
+                continue
+        
+        if not ready:
+            speak("Starting anyway. Make sure Word document is active.")
+            time.sleep(2)
+        
+        speak("Starting dictation. Say 'stop dictation' when finished.")
+        print("\n" + "="*60)
+        print("LIVE DICTATION ACTIVE")
+        print("Commands:")
+        print("  - Say 'new line' for line break")
+        print("  - Say 'new paragraph' for paragraph")
+        print("  - Say 'stop dictation' to end")
+        print("="*60 + "\n")
+        
+        sentence_count = 0
+        
+        while True:
+            try:
+                with sr.Microphone() as source:
+                    print(f"Listening... (Sentences: {sentence_count})")
+                    eel.DisplayMessage('Listening and typing...')
+                    r.adjust_for_ambient_noise(source, duration=0.5)
+                    audio = r.listen(source, timeout=10, phrase_time_limit=15)
+                
+                print("Processing...")
+                text = r.recognize_google(audio, language=CURRENT_LANG_CODE)
+                text_lower = text.lower()
+                
+                print(f"You said: {text}")
+                eel.DisplayMessage(f"Typing: {text}")
+                
+                # Check for stop command
+                if "stop dictation" in text_lower or "end dictation" in text_lower:
+                    speak("Stopping dictation")
+                    break
+                
+                # Check for formatting commands
+                if "new paragraph" in text_lower:
+                    pyautogui.press('enter')
+                    pyautogui.press('enter')
+                    speak("New paragraph")
+                    continue
+                
+                elif "new line" in text_lower:
+                    pyautogui.press('enter')
+                    speak("New line")
+                    continue
+                
+                # Type the text
+                open_word_and_type(text)
+                sentence_count += 1
+                
+                time.sleep(0.3)
+                
+            except sr.WaitTimeoutError:
+                print("No speech detected...")
+                continue
+                
+            except sr.UnknownValueError:
+                print("Could not understand")
+                continue
+                
+            except Exception as e:
+                print(f"Error: {e}")
+                continue
+        
+        speak(f"Dictation complete. Typed {sentence_count} sentences. You can save the document now.")
+        print(f"\nTotal sentences typed: {sentence_count}")
+        return True
+            
+    except Exception as e:
+        print(f"Dictation error: {e}")
+        import traceback
+        traceback.print_exc()
+        speak("Sorry, I encountered an error during dictation")
+        return False
+
+
+def dictate_with_punctuation():
+    """
+    Enhanced dictation with voice punctuation
+    """
+    try:
+        speak("Opening Word for dictation with punctuation support")
+        
+        word_path = find_word_path()
+        if word_path:
+            subprocess.Popen([word_path])
+        else:
+            os.system("start winword")
+        
+        speak("Waiting for Word to open")
+        time.sleep(5)
+        
+        speak("Click in the document, then say 'ready'")
+        
+        r = sr.Recognizer()
+        
+        # Wait for ready
+        for _ in range(5):
+            try:
+                with sr.Microphone() as source:
+                    print("Say 'ready' when you're set...")
+                    r.adjust_for_ambient_noise(source)
+                    audio = r.listen(source, timeout=10)
+                    command = r.recognize_google(audio, language=CURRENT_LANG_CODE)
+                    if "ready" in command.lower():
+                        break
+            except:
+                continue
+        
+        speak("Starting dictation with punctuation. Say 'comma', 'period', 'question mark', etc.")
+        print("\n" + "="*60)
+        print("PUNCTUATION DICTATION")
+        print("Say: comma, period, question mark, exclamation mark")
+        print("     new line, new paragraph, stop dictation")
+        print("="*60 + "\n")
+        
+        word_count = 0
+        
+        punctuation_map = {
+            "comma": ",",
+            "period": ".",
+            "full stop": ".",
+            "question mark": "?",
+            "exclamation mark": "!",
+            "exclamation": "!",
+            "colon": ":",
+            "semicolon": ";"
+        }
+        
+        while True:
+            try:
+                with sr.Microphone() as source:
+                    print(f"Listening... (Words: {word_count})")
+                    r.adjust_for_ambient_noise(source)
+                    audio = r.listen(source, timeout=10, phrase_time_limit=15)
+                
+                text = r.recognize_google(audio, language=CURRENT_LANG_CODE)
+                text_lower = text.lower()
+                
+                print(f"Recognized: {text}")
+                
+                if "stop dictation" in text_lower:
+                    speak("Ending dictation")
+                    break
+                
+                # Formatting
+                if "new paragraph" in text_lower:
+                    pyautogui.press('enter')
+                    pyautogui.press('enter')
+                    continue
+                
+                elif "new line" in text_lower:
+                    pyautogui.press('enter')
+                    continue
+                
+                # Check punctuation
+                punctuation_found = False
+                for phrase, symbol in punctuation_map.items():
+                    if phrase in text_lower:
+                        # Remove punctuation word
+                        clean_text = text.lower().replace(phrase, "").strip()
+                        if clean_text:
+                            pyautogui.write(clean_text + symbol + " ", interval=0.01)
+                            word_count += len(clean_text.split())
+                        else:
+                            pyautogui.write(symbol + " ", interval=0.01)
+                        punctuation_found = True
+                        break
+                
+                if not punctuation_found:
+                    pyautogui.write(text + " ", interval=0.01)
+                    word_count += len(text.split())
+                
+                time.sleep(0.3)
+                
+            except sr.WaitTimeoutError:
+                continue
+            except sr.UnknownValueError:
+                continue
+            except Exception as e:
+                print(f"Error: {e}")
+                continue
+        
+        speak(f"Dictation complete with {word_count} words")
+        return True
+        
+    except Exception as e:
+        print(f"Punctuation dictation error: {e}")
+        speak("Error during dictation")
+        return False
+
+
+def simple_dictation():
+    """
+    Simplest version - just type what you say
+    User must have Word open already
+    """
+    try:
+        speak("Please open Microsoft Word and click in the document")
+        speak("Say 'ready' when you want to start")
+        
+        r = sr.Recognizer()
+        
+        # Wait for ready
+        ready = False
+        for _ in range(10):
+            try:
+                with sr.Microphone() as source:
+                    print("Waiting for 'ready' command...")
+                    r.adjust_for_ambient_noise(source)
+                    audio = r.listen(source, timeout=8)
+                    command = r.recognize_google(audio, language=CURRENT_LANG_CODE)
+                    if "ready" in command.lower() or "start" in command.lower():
+                        ready = True
+                        break
+            except:
+                continue
+        
+        if not ready:
+            speak("Timeout. Please try again.")
+            return False
+        
+        speak("Starting simple dictation. Say stop when done.")
+        print("\n" + "="*60)
+        print("SIMPLE DICTATION MODE")
+        print("Say 'stop' or 'stop dictation' to end")
+        print("="*60 + "\n")
+        
+        count = 0
+        
+        while True:
+            try:
+                with sr.Microphone() as source:
+                    print(f"Listening... ({count} phrases)")
+                    r.adjust_for_ambient_noise(source)
+                    audio = r.listen(source, timeout=10, phrase_time_limit=15)
+                
+                text = r.recognize_google(audio, language=CURRENT_LANG_CODE)
+                
+                if "stop" in text.lower():
+                    speak("Stopping")
+                    break
+                
+                print(f"Typing: {text}")
+                pyautogui.write(text + " ", interval=0.01)
+                count += 1
+                
+                time.sleep(0.2)
+                
+            except sr.WaitTimeoutError:
+                continue
+            except sr.UnknownValueError:
+                continue
+            except Exception as e:
+                print(f"Error: {e}")
+                continue
+        
+        speak(f"Typed {count} phrases")
+        return True
+        
+    except Exception as e:
+        print(f"Simple dictation error: {e}")
+        speak("Error during dictation")
+        return False
+
 @eel.expose
 def allCommands(message=1):
     """Main command processor with auto-continue listening"""
@@ -4551,10 +4913,20 @@ def allCommands(message=1):
         elif "start continuous listening" in query or "always listen" in query:
            start_continuous_listening()
            speak("Continuous listening activated. I'm always listening now.")
-
+  
         elif "stop continuous listening" in query or "stop always listening" in query:
           stop_continuous_listening()
           speak("Continuous listening stopped. Say IRA to activate me.")
+        # WORD DICTATION COMMANDS
+
+        elif"start dictation" in query or "dictate to word" in query or "open word and dictate" in query:
+            dictate_to_word_live()
+
+        elif "dictation with punctuation" in query or "punctuation dictation" in query:
+            dictate_with_punctuation()
+
+        elif "simple dictation" in query or "dictate now" in query:
+            simple_dictation()
         # System commands
         elif "open" in query or "launch" in query or "start" in query:
             from engine.features import openCommand
