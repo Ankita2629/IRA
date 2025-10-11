@@ -1,18 +1,33 @@
 @import url('https://fonts.googleapis.com/css2?family=Bitcount+Single:wght@100..900&family=Fira+Code:wght@300..700&family=Orbitron:wght@400..900&family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&display=swap');
-body{
-    background: radial-gradient(
-        ellipse 80% 60% at 50% 0%,   /* ellipse shape at the top center */
-        rgba(6, 182, 212, 0.25),     /* teal glow color */
-        transparent 70%              /* fades to black */
+body {
+  background:
+    /* Teal glow effect */
+    radial-gradient(
+      ellipse 80% 60% at 50% 0%,
+      rgba(6, 182, 212, 0.25),
+      transparent 70%
     ),
-    #000000; /* base black */
-    
-    overflow-y: hidden;
-    overflow-x: hidden;
-    margin: 0;
-    padding: 0;
-    min-height: 100vh;
+    /* Dot matrix pattern */
+    radial-gradient(circle at 25% 25%, #222222 0.5px, transparent 1px),
+    radial-gradient(circle at 75% 75%, #111111 0.5px, transparent 1px),
+    /* Base black color */
+    #000000;
+
+  background-size:
+    auto,      /* for glow gradient */
+    10px 10px, /* first dot pattern */
+    10px 10px; /* second dot pattern */
+
+  background-blend-mode: normal;
+  image-rendering: pixelated;
+
+  overflow-y: hidden;
+  overflow-x: hidden;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
 }
+
 
 
 
