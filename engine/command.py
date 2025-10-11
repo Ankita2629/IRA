@@ -1,6 +1,7 @@
 import base64
 import keyword
 import random
+import sys
 import PyPDF2
 import pyttsx3
 from setuptools import sic
@@ -4844,6 +4845,654 @@ def simple_dictation():
         speak("Error during dictation")
         return False
 
+def get_system_info():
+    """
+    Get comprehensive system information
+    """
+    try:
+        speak("Gathering system information")
+        
+        # Operating System Info
+        os_name = platform.system()
+        os_version = platform.version()
+        os_release = platform.release()
+        
+        # Computer Info
+        computer_name = platform.node()
+        processor = platform.processor()
+        architecture = platform.machine()
+        
+        # Python Info
+        python_version = platform.python_version()
+        
+        # Memory Info
+        memory = psutil.virtual_memory()
+        total_ram = round(memory.total / (1024**3), 2)
+        available_ram = round(memory.available / (1024**3), 2)
+        ram_percent = memory.percent
+        
+        # Disk Info
+        disk = psutil.disk_usage('C:\\' if os_name == 'Windows' else '/')
+        total_disk = round(disk.total / (1024**3), 2)
+        free_disk = round(disk.free / (1024**3), 2)
+        disk_percent = disk.percent
+        
+        # CPU Info
+        cpu_count = psutil.cpu_count()
+        cpu_percent = psutil.cpu_percent(interval=1)
+        
+        info_text = f"""
+System Information:
+
+Operating System: {os_name} {os_release}
+Version: {os_version}
+Computer Name: {computer_name}
+Processor: {processor}
+Architecture: {architecture}
+CPU Cores: {cpu_count}
+CPU Usage: {cpu_percent}%
+
+Python Version: {python_version}
+
+RAM: {total_ram} GB Total, {available_ram} GB Available ({ram_percent}% used)
+Disk C: {total_disk} GB Total, {free_disk} GB Free ({disk_percent}% used)
+"""
+        
+        print(info_text)
+        
+        # Speak summary
+        speak(f"System: {os_name} {os_release}")
+        speak(f"Processor: {processor}")
+        speak(f"RAM: {total_ram} gigabytes total, {ram_percent} percent used")
+        speak(f"Disk: {free_disk} gigabytes free out of {total_disk} gigabytes")
+        speak(f"CPU usage: {cpu_percent} percent")
+        
+        return True
+        
+    except Exception as e:
+        print(f"System info error: {e}")
+        speak("Could not retrieve complete system information")
+        return False
+
+
+# ==================== WINDOWS UPDATE ====================
+
+def update_windows():
+    """
+    Check and install Windows updates
+    Requires administrator privileges
+    """
+    try:
+        if platform.system() != "Windows":
+            speak("Windows update is only available on Windows operating system")
+            return False
+        
+        speak("Checking for Windows updates. This may take a few minutes.")
+        print("\n" + "="*60)
+        print("WINDOWS UPDATE")
+        print("="*60)
+        
+        # Method 1: Using PowerShell (Recommended)
+        powershell_cmd = """
+        Install-Module PSWindowsUpdate -Force -Scope CurrentUser
+        Import-Module PSWindowsUpdate
+        Get-WindowsUpdate -Install -AcceptAll -AutoReboot
+        """
+        
+        try:
+            # Check for updates first
+            check_cmd = "Get-WindowsUpdate"
+            result = subprocess.run(
+                ["powershell", "-Command", check_cmd],
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            
+            if "No updates available" in result.stdout or not result.stdout.strip():
+                speak("Your Windows is up to date. No updates found.")
+                print("✓ Windows is up to date")
+                return True
+            
+            speak("Updates available. Would you like to install them? Say yes or no.")
+            confirmation = takecommand()
+            
+            if "yes" in confirmation.lower():
+                speak("Installing Windows updates. This will take some time. Please be patient.")
+                
+                # Install updates
+                result = subprocess.run(
+                    ["powershell", "-Command", powershell_cmd],
+                    capture_output=True,
+                    text=True,
+                    timeout=1800  # 30 minutes timeout
+                )
+                
+                if result.returncode == 0:
+                    speak("Windows updates installed successfully. A restart may be required.")
+                    print("✓ Windows updates completed")
+                    return True
+                else:
+                    speak("Some updates may require administrator privileges")
+                    print(f"⚠️ Update result: {result.stderr}")
+            else:
+                speak("Windows update cancelled")
+                return False
+                
+        except subprocess.TimeoutExpired:
+            speak("Update process is taking longer than expected. Continuing in background.")
+            return True
+        except Exception as e:
+            print(f"PowerShell update error: {e}")
+            
+            # Method 2: Alternative using UsoClient (Windows built-in)
+            speak("Trying alternative update method")
+            try:
+                subprocess.run(["UsoClient", "StartScan"], check=True)
+                subprocess.run(["UsoClient", "StartDownload"], check=True)
+                subprocess.run(["UsoClient", "StartInstall"], check=True)
+                speak("Windows update initiated successfully")
+                return True
+            except:
+                speak("Please run Windows Update manually from Settings. Administrator access is required.")
+                return False
+        
+    except Exception as e:
+        print(f"Windows update error: {e}")
+        speak("Could not complete Windows update. Please try manually from Settings.")
+        return False
+
+
+# ==================== DRIVER UPDATE ====================
+
+def update_drivers():
+    """
+    Update system drivers using Windows Update
+    """
+    try:
+        if platform.system() != "Windows":
+            speak("Driver update is only available on Windows")
+            return False
+        
+        speak("Checking for driver updates")
+        print("\n" + "="*60)
+        print("DRIVER UPDATE")
+        print("="*60)
+        
+        # Using PowerShell to update drivers
+        powershell_cmd = """
+        $Session = New-Object -ComObject Microsoft.Update.Session
+        $Searcher = $Session.CreateUpdateSearcher()
+        $Searcher.ServiceID = '7971f918-a847-4430-9279-4a52d1efe18d'
+        $Searcher.SearchScope = 1
+        $Searcher.ServerSelection = 3
+        $Criteria = "IsInstalled=0 and Type='Driver'"
+        $SearchResult = $Searcher.Search($Criteria)
+        $Updates = $SearchResult.Updates
+        
+        if ($Updates.Count -eq 0) {
+            Write-Output "No driver updates available"
+        } else {
+            Write-Output "Found $($Updates.Count) driver updates"
+            foreach ($Update in $Updates) {
+                Write-Output $Update.Title
+            }
+        }
+        """
+        
+        try:
+            result = subprocess.run(
+                ["powershell", "-Command", powershell_cmd],
+                capture_output=True,
+                text=True,
+                timeout=120
+            )
+            
+            output = result.stdout
+            
+            if "No driver updates available" in output:
+                speak("All drivers are up to date")
+                print("✓ Drivers are up to date")
+                return True
+            else:
+                print(output)
+                speak("Driver updates found. Would you like to install them?")
+                confirmation = takecommand()
+                
+                if "yes" in confirmation.lower():
+                    speak("Installing driver updates. Please wait.")
+                    
+                    install_cmd = """
+                    $Session = New-Object -ComObject Microsoft.Update.Session
+                    $Searcher = $Session.CreateUpdateSearcher()
+                    $Searcher.ServiceID = '7971f918-a847-4430-9279-4a52d1efe18d'
+                    $Searcher.SearchScope = 1
+                    $Searcher.ServerSelection = 3
+                    $Criteria = "IsInstalled=0 and Type='Driver'"
+                    $SearchResult = $Searcher.Search($Criteria)
+                    
+                    $Downloader = $Session.CreateUpdateDownloader()
+                    $Downloader.Updates = $SearchResult.Updates
+                    $Downloader.Download()
+                    
+                    $Installer = $Session.CreateUpdateInstaller()
+                    $Installer.Updates = $SearchResult.Updates
+                    $InstallationResult = $Installer.Install()
+                    """
+                    
+                    subprocess.run(
+                        ["powershell", "-Command", install_cmd],
+                        capture_output=True,
+                        text=True,
+                        timeout=600
+                    )
+                    
+                    speak("Driver updates completed. A restart may be required.")
+                    return True
+                else:
+                    speak("Driver update cancelled")
+                    return False
+                    
+        except subprocess.TimeoutExpired:
+            speak("Driver update is taking longer. Continuing in background.")
+            return True
+            
+    except Exception as e:
+        print(f"Driver update error: {e}")
+        speak("Could not update drivers automatically. Please use Device Manager.")
+        return False
+
+
+# ==================== APPLICATION UPDATE ====================
+
+def update_applications():
+    """
+    Update installed applications using winget (Windows Package Manager)
+    """
+    try:
+        if platform.system() != "Windows":
+            speak("Application update using winget is only available on Windows")
+            return False
+        
+        speak("Checking for application updates using Windows Package Manager")
+        print("\n" + "="*60)
+        print("APPLICATION UPDATE")
+        print("="*60)
+        
+        # Check if winget is installed
+        try:
+            result = subprocess.run(
+                ["winget", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                speak("Windows Package Manager not found. Please install it from Microsoft Store.")
+                return False
+                
+        except FileNotFoundError:
+            speak("Windows Package Manager not installed. Please install App Installer from Microsoft Store.")
+            return False
+        
+        # List upgradable apps
+        speak("Scanning for available updates")
+        try:
+            result = subprocess.run(
+                ["winget", "upgrade"],
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            
+            output = result.stdout
+            print(output)
+            
+            if "No installed package found" in output or "No applicable update found" in output:
+                speak("All applications are up to date")
+                print("✓ All apps are up to date")
+                return True
+            
+            # Count updates
+            lines = output.split('\n')
+            update_count = len([line for line in lines if line.strip() and not line.startswith('-')])
+            
+            if update_count > 2:  # Excluding header lines
+                speak(f"Found updates for {update_count - 2} applications. Would you like to update all?")
+                confirmation = takecommand()
+                
+                if "yes" in confirmation.lower():
+                    speak("Updating all applications. This may take several minutes.")
+                    
+                    # Update all apps
+                    result = subprocess.run(
+                        ["winget", "upgrade", "--all", "--silent"],
+                        capture_output=True,
+                        text=True,
+                        timeout=1800  # 30 minutes
+                    )
+                    
+                    if result.returncode == 0:
+                        speak("All applications updated successfully")
+                        print("✓ Applications updated")
+                        return True
+                    else:
+                        speak("Some applications could not be updated")
+                        print(f"⚠️ Update output: {result.stdout}")
+                        return False
+                else:
+                    speak("Application update cancelled")
+                    return False
+            else:
+                speak("All applications are up to date")
+                return True
+                
+        except subprocess.TimeoutExpired:
+            speak("Application update is taking longer. Continuing in background.")
+            return True
+            
+    except Exception as e:
+        print(f"Application update error: {e}")
+        speak("Could not update applications")
+        return False
+
+
+# ==================== MICROSOFT STORE APPS UPDATE ====================
+
+def update_store_apps():
+    """
+    Update Microsoft Store applications
+    """
+    try:
+        if platform.system() != "Windows":
+            speak("Store app update is only available on Windows")
+            return False
+        
+        speak("Updating Microsoft Store applications")
+        print("\n" + "="*60)
+        print("MICROSOFT STORE UPDATE")
+        print("="*60)
+        
+        # Using PowerShell to update Store apps
+        powershell_cmd = """
+        Get-CimInstance -Namespace "Root\\cimv2\\mdm\\dmmap" -ClassName "MDM_EnterpriseModernAppManagement_AppManagement01" | 
+        Invoke-CimMethod -MethodName UpdateScanMethod
+        """
+        
+        try:
+            speak("Initiating Microsoft Store update scan")
+            
+            result = subprocess.run(
+                ["powershell", "-Command", powershell_cmd],
+                capture_output=True,
+                text=True,
+                timeout=120
+            )
+            
+            # Alternative method: Open Store and trigger updates
+            subprocess.Popen(["ms-windows-store://downloadsandupdates"])
+            
+            speak("Microsoft Store opened. It will automatically check and update apps.")
+            print("✓ Store update initiated")
+            
+            return True
+            
+        except Exception as e:
+            print(f"PowerShell error: {e}")
+            
+            # Fallback: Just open the Store
+            speak("Opening Microsoft Store. Please check for updates manually.")
+            os.startfile("ms-windows-store:")
+            return True
+            
+    except Exception as e:
+        print(f"Store update error: {e}")
+        speak("Could not update Store apps automatically")
+        return False
+
+
+# ==================== PYTHON PACKAGES UPDATE ====================
+
+def update_python_packages():
+    """
+    Update all installed Python packages using pip
+    """
+    try:
+        speak("Updating Python packages. This may take a few minutes.")
+        print("\n" + "="*60)
+        print("PYTHON PACKAGES UPDATE")
+        print("="*60)
+        
+        # Get list of outdated packages
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "list", "--outdated"],
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            
+            output = result.stdout
+            print(output)
+            
+            if not output.strip() or "Package" not in output:
+                speak("All Python packages are up to date")
+                print("✓ Python packages are up to date")
+                return True
+            
+            # Count outdated packages
+            lines = output.strip().split('\n')
+            package_count = len(lines) - 2  # Excluding header lines
+            
+            if package_count > 0:
+                speak(f"Found {package_count} outdated packages. Would you like to update them?")
+                confirmation = takecommand()
+                
+                if "yes" in confirmation.lower():
+                    speak("Updating Python packages")
+                    
+                    # Update pip itself first
+                    print("Updating pip...")
+                    subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
+                        capture_output=True,
+                        timeout=120
+                    )
+                    
+                    # Get package names
+                    packages = []
+                    for line in lines[2:]:  # Skip header lines
+                        if line.strip():
+                            package_name = line.split()[0]
+                            packages.append(package_name)
+                    
+                    # Update each package
+                    updated = 0
+                    failed = 0
+                    
+                    for package in packages:
+                        try:
+                            print(f"Updating {package}...")
+                            result = subprocess.run(
+                                [sys.executable, "-m", "pip", "install", "--upgrade", package],
+                                capture_output=True,
+                                text=True,
+                                timeout=180
+                            )
+                            
+                            if result.returncode == 0:
+                                updated += 1
+                                print(f"✓ {package} updated")
+                            else:
+                                failed += 1
+                                print(f"✗ {package} failed")
+                                
+                        except Exception as e:
+                            failed += 1
+                            print(f"✗ {package} error: {e}")
+                    
+                    speak(f"Updated {updated} packages successfully. {failed} packages failed.")
+                    print(f"\n✓ Updated: {updated}")
+                    print(f"✗ Failed: {failed}")
+                    return True
+                else:
+                    speak("Python package update cancelled")
+                    return False
+            else:
+                speak("All Python packages are up to date")
+                return True
+                
+        except subprocess.TimeoutExpired:
+            speak("Package update is taking longer. Please check manually.")
+            return False
+            
+    except Exception as e:
+        print(f"Python package update error: {e}")
+        speak("Could not update Python packages")
+        return False
+
+
+# ==================== COMPLETE SYSTEM UPDATE ====================
+
+def complete_system_update():
+    """
+    Perform complete system update - all components
+    """
+    try:
+        speak("Starting complete system update. This will take significant time. Please be patient.")
+        print("\n" + "="*60)
+        print("COMPLETE SYSTEM UPDATE")
+        print("="*60 + "\n")
+        
+        results = {
+            "Windows": False,
+            "Drivers": False,
+            "Applications": False,
+            "Store Apps": False,
+            "Python Packages": False
+        }
+        
+        # 1. Windows Update
+        speak("Step 1 of 5: Updating Windows")
+        results["Windows"] = update_windows()
+        
+        # 2. Driver Update
+        speak("Step 2 of 5: Updating Drivers")
+        results["Drivers"] = update_drivers()
+        
+        # 3. Applications Update
+        speak("Step 3 of 5: Updating Applications")
+        results["Applications"] = update_applications()
+        
+        # 4. Store Apps Update
+        speak("Step 4 of 5: Updating Microsoft Store Apps")
+        results["Store Apps"] = update_store_apps()
+        
+        # 5. Python Packages Update
+        speak("Step 5 of 5: Updating Python Packages")
+        results["Python Packages"] = update_python_packages()
+        
+        # Summary
+        print("\n" + "="*60)
+        print("UPDATE SUMMARY")
+        print("="*60)
+        
+        for component, status in results.items():
+            status_icon = "✓" if status else "✗"
+            status_text = "Success" if status else "Failed/Skipped"
+            print(f"{status_icon} {component}: {status_text}")
+        
+        successful = sum(results.values())
+        total = len(results)
+        
+        speak(f"System update complete. {successful} out of {total} components updated successfully.")
+        
+        if successful == total:
+            speak("All components updated successfully. A system restart is recommended.")
+        else:
+            speak("Some components could not be updated. Please check manually.")
+        
+        return results
+        
+    except Exception as e:
+        print(f"Complete update error: {e}")
+        speak("Could not complete full system update")
+        return False
+
+
+# ==================== CHECK FOR UPDATES ====================
+
+def check_for_updates():
+    """
+    Check for available updates without installing
+    """
+    try:
+        speak("Checking for available updates across all components")
+        print("\n" + "="*60)
+        print("UPDATE CHECK")
+        print("="*60 + "\n")
+        
+        # Windows Updates
+        print("1. Windows Updates:")
+        try:
+            result = subprocess.run(
+                ["powershell", "-Command", "Get-WindowsUpdate"],
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            if "No updates available" in result.stdout:
+                print("   ✓ Windows is up to date")
+            else:
+                print("   ⚠️ Windows updates available")
+        except:
+            print("   ⚠️ Could not check Windows updates")
+        
+        # Application Updates
+        print("\n2. Application Updates (winget):")
+        try:
+            result = subprocess.run(
+                ["winget", "upgrade"],
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            if "No applicable update found" in result.stdout:
+                print("   ✓ All applications up to date")
+            else:
+                lines = result.stdout.split('\n')
+                update_count = len([l for l in lines if l.strip() and not l.startswith('-')])
+                print(f"    {update_count - 2} application updates available")
+        except:
+            print("    Could not check application updates")
+        
+        # Python Packages
+        print("\n3. Python Packages:")
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "list", "--outdated"],
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            lines = result.stdout.strip().split('\n')
+            if len(lines) <= 2:
+                print("   ✓ All Python packages up to date")
+            else:
+                print(f"   ⚠️ {len(lines) - 2} Python packages outdated")
+        except:
+            print("   ⚠️ Could not check Python packages")
+        
+        speak("Update check complete. Review the results above.")
+        return True
+        
+    except Exception as e:
+        print(f"Update check error: {e}")
+        speak("Could not complete update check")
+        return False
+
+
 @eel.expose
 def allCommands(message=1):
     """Main command processor with auto-continue listening"""
@@ -5060,7 +5709,48 @@ def allCommands(message=1):
         elif "beautiful wallpaper" in query:
            categories = ["nature", "ocean", "sunset", "space"]
            change_wallpaper_random(random.choice(categories))
-
+        elif "system information" in query or "system info" in query:
+            get_system_info()
+        
+        elif "check for updates" in query or "check updates" in query:
+            check_for_updates()
+        
+        elif "update windows" in query or "windows update" in query:
+            update_windows()
+        
+        elif "update drivers" in query or "driver update" in query:
+            update_drivers()
+        
+        elif "update apps" in query or "update applications" in query:
+            update_applications()
+        
+        elif "update store apps" in query or "update microsoft store" in query:
+            update_store_apps()
+        
+        elif "update python packages" in query or "update pip packages" in query:
+            update_python_packages()
+        
+        elif "complete system update" in query or "full system update" in query or "update everything" in query:
+            complete_system_update()
+        
+        elif "update system" in query or "update my system" in query:
+            speak("Would you like a complete system update or specific component?")
+            choice = takecommand()
+            
+            if "complete" in choice or "full" in choice or "everything" in choice:
+                complete_system_update()
+            elif "windows" in choice:
+                update_windows()
+            elif "driver" in choice:
+                update_drivers()
+            elif "app" in choice:
+                update_applications()
+            elif "python" in choice:
+                update_python_packages()
+            elif "store" in choice:
+                update_store_apps()
+            else:
+                speak("Please specify: windows, drivers, applications, python packages, or complete update")
         elif "weather wallpaper" in query:
             speak("Please tell me the city name")
             city_name = takecommand()

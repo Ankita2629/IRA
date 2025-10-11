@@ -228,7 +228,7 @@ class FaceAuthSystem:
         minH = 0.1 * cam.get(4)
         
         font = cv2.FONT_HERSHEY_SIMPLEX
-        CONFIDENCE_THRESHOLD = 70
+        CONFIDENCE_THRESHOLD = 60
         
         print(f"\n[INFO] Registered Users: {list(names.values())}")
         print(f"[INFO] Confidence Threshold: {CONFIDENCE_THRESHOLD}%")
@@ -406,7 +406,7 @@ def AuthenticateFace():
     names = {int(uid): data['name'] for uid, data in system.users.items()}
 
     cam = cv2.VideoCapture(0)
-    CONFIDENCE_THRESHOLD = 70
+    CONFIDENCE_THRESHOLD = 60
     max_attempts = 20  # stop if too many failed recognitions
     attempt_count = 0
     recognized = False
